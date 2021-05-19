@@ -118,15 +118,17 @@ def activity_summary(token, user_id, url):
     print(r)
 
     print(r.json())
-    r = r.json()
+    summary = r.json()
     with open(f"activity_summary_{user_id}_{activity}.csv", 'w') as csv_file:
         csv_writer = csv.writer(csv_file)
-        header = r.keys()
+        header = summary.keys()
         csv_writer.writerow(header)
-        csv_writer.writerow(r.values())
+        csv_writer.writerow(summary.values())
+
+    return summary
 
 
-def get_steps(token, user_id, url):
+def get_steps(token, user_id, url, date):
 
     # The url has a constant format. Split to find activity id
     activity = url.split('/')[-1]
@@ -147,11 +149,9 @@ def get_steps(token, user_id, url):
         for s in r['samples']:
             if 'steps' in s:
                 print(s)
-                csv_file.write(f"{s['time']}, {s['steps']}\n")
+                csv_file.write(f"{date}, {s['time']}, {s['steps']}\n")
 
     print(r)
-
-
 
 
 def commit_activity(token, user_id, transaction):
