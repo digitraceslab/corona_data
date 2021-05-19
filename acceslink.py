@@ -1,6 +1,65 @@
+import os
 import requests
 import uuid
 import csv
+import pandas as pd
+
+
+def extract_time(time_string):
+    ''' Utility for extracting hours, minutes and seconds
+    from the API time format
+
+    time_string : time value returened by the Acceslink API
+
+    return : tuple of hours, minutes and seconds
+    '''
+
+    t = ''
+    hours = 0
+    minutes = 0
+    seconds = 0
+    for c in time_string:
+        if c == 'P':
+            # The string starts with PT, which we skip
+            pass
+        elif c == 'T':
+            # The string starts with PT, which we skip
+            pass
+        elif c == 'H':
+            hours = int(t)
+            t = ''
+        elif c == 'M':
+            minutes = int(t)
+            t = ''
+        elif c == 'S':
+            seconds = int(t)
+            t = ''
+        else:
+            t += c
+
+    return (hours, minutes, seconds)
+
+
+def replace_or_append_csv(filename, data, columns, index_column):
+
+    if os.path.isfile(filename):
+        dataframe = pd.read_csv(filename)[columns]
+    else:
+        dataframe = pd.DataFrame(columns=columns)
+
+    pruned_data = []
+    for full_data in data:
+        pruned_data = {key: full_data[key] for key in columns}
+
+        index = pruned_data[index_column]
+        # remove any data with the same index_column
+        condition = dataframe[index_column] == index
+        rows = dataframe[condition].index
+        dataframe.drop(rows, inplace=True)
+        # Append the new one
+        dataframe = dataframe.append(pruned_data, ignore_index=True)
+
+    dataframe[columns].to_csv(filename)
 
 
 def register(token, id=uuid.uuid4().hex):
@@ -119,20 +178,11 @@ def activity_summary(token, user_id, url):
 
     print(r.json())
     summary = r.json()
-    with open(f"activity_summary_{user_id}_{activity}.csv", 'w') as csv_file:
-        csv_writer = csv.writer(csv_file)
-        header = summary.keys()
-        csv_writer.writerow(header)
-        csv_writer.writerow(summary.values())
 
     return summary
 
 
-def get_steps(token, user_id, url, date):
-
-    # The url has a constant format. Split to find activity id
-    activity = url.split('/')[-1]
-    print(activity)
+def pull_steps(token, user_id, url, date):
 
     headers = {
         'Accept': 'application/json',
@@ -141,59 +191,20 @@ def get_steps(token, user_id, url, date):
 
     r = requests.get(url+'/step-samples', headers=headers)
     r.raise_for_status()
-    print(r)
     r = r.json()
-    with open(f"activity_steps_{user_id}_{activity}.csv", 'w') as csv_file:
-        csv_file.write(f"date,time,steps\n")
-        print(f"date, time, steps")
-        for s in r['samples']:
-            if 'steps' in s:
-                print(s)
-                csv_file.write(f"{date},{s['time']},{s['steps']}\n")
 
-    print(r)
+    samples = r['samples']
+    for s in samples:
+        s['date'] = date
 
+    samples = [s for s in samples if 'steps' in s]
 
-def extract_time(time_string):
-    ''' Utility for extracting hours, minutes and seconds
-    from the API time format
-
-    time_string : time value returened by the Acceslink API
-
-    return : tuple of hours, minutes and seconds
-    '''
-
-    t = ''
-    hours = 0
-    minutes = 0
-    seconds = 0
-    for c in time_string:
-        if c == 'P':
-            # The string starts with PT, which we skip
-            pass
-        elif c == 'T':
-            # The string starts with PT, which we skip
-            pass
-        elif c == 'H':
-            hours = int(t)
-            t = ''
-        elif c == 'M':
-            minutes = int(t)
-            t = ''
-        elif c == 'S':
-            seconds = int(t)
-            t = ''
-        else:
-            t += c
-
-    return (hours, minutes, seconds)
+    columns = ["date", "time", "steps"]
+    filename = f"activity_steps_{user_id}_{date}.csv"
+    replace_or_append_csv(filename, samples, columns, 'time')
 
 
-def get_zones(token, user_id, url, date):
-
-    # The url has a constant format. Split to find activity id
-    activity = url.split('/')[-1]
-    print(activity)
+def pull_zones(token, user_id, url, date):
 
     headers = {
         'Accept': 'application/json',
@@ -202,22 +213,21 @@ def get_zones(token, user_id, url, date):
 
     r = requests.get(url+'/zone-samples', headers=headers)
     r.raise_for_status()
-    print(r)
     r = r.json()
-    with open(f"activity_zones_{user_id}_{activity}.csv", 'w') as csv_file:
-        csv_file.write(f"date,time,zone,duration hours, duration minutes,duration seconds\n")
-        print(f"time, zones")
-        for s in r['samples']:
-            if 'activity-zones' in s:
-                print(s)
-                time = s['time']
-                for zone in s['activity-zones']:
-                    inzone = zone['inzone']
-                    hours, minutes, seconds = extract_time(inzone)
 
-                    csv_file.write(f"{date},{time},{zone['index']},{hours},{minutes},{seconds} \n")
+    samples = []
+    for rs in r['samples']:
+        if 'activity-zones' in rs:
+            for zone in rs['activity-zones']:
+                hours, minutes, seconds = extract_time(zone['inzone'])
+                s = {'date': date, 'time': rs['time'],
+                     'index': zone['index'], 'hours': hours,
+                     'minutes': minutes, 'seconds': seconds}
+                samples.append(s)
 
-    print(r)
+    columns = ["date", "time", "index", "hours", "minutes", "seconds"]
+    filename = f"activity_zones_{user_id}_{date}.csv"
+    replace_or_append_csv(filename, samples, columns, 'time')
 
 
 def commit_activity(token, user_id, transaction):
@@ -229,3 +239,34 @@ def commit_activity(token, user_id, transaction):
     r = requests.put(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions/{transaction}', headers=headers)
     r.raise_for_status()
     print(r)
+
+
+def pull_activities(token, user_id):
+
+    # To avoid writing multiple entries for the same day,
+    # read the csv file if it exists and get the lastest date
+    filename = f"activity_summary_{user_id}.csv"
+    activity_columns = ["id", "date", "created", "calories", "active-calories", "duration", "active-steps"]
+
+    if os.path.isfile(filename):
+        summaries = pd.read_csv(filename)[activity_columns]
+    else:
+        summaries = pd.DataFrame(columns=activity_columns)
+
+    # Fetch data from the API
+    transaction = activities_transaction(token, user_id)
+    if transaction is not None:
+        url_list = activity_list(token, user_id, transaction)
+
+        summary_list = []
+        for url in url_list:
+            summary = activity_summary(token, user_id, url)
+            summary_list.append(summary)
+
+            date = summary['date']
+            pull_steps(token, user_id, url, date)
+            pull_zones(token, user_id, url, date)
+
+        commit_activity(token, user_id, transaction)
+        summaries[activity_columns].to_csv(filename)
+        replace_or_append_csv(filename, summary_list, activity_columns, 'date')
