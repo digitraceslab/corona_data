@@ -329,53 +329,56 @@ def pull_activities(token, user_id):
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
-    if transaction is not None:
 
-        # Found new data. Check for old data first
-        if os.path.isfile(filename):
-            # The file already exists, so read current entries
-            summaries = pd.read_csv(filename)[activity_columns]
+    if transaction is None:
+        # No new data, nothing to do
+        return
 
-            # We will likely replace the last line, so make note of
-            # it and drop it from the dataframe
-            previous_date = summaries.at[summaries.index[-1], 'date']
-            previous_summary = summaries.tail(1).to_dict('records')[0]
-            summaries.drop(summaries.index[-1], inplace=True)
+    # Found new data. Check for old data first
+    if os.path.isfile(filename):
+        # The file already exists, so read current entries
+        summaries = pd.read_csv(filename)[activity_columns]
 
-        else:
-            # First time pulling for this subject. Create a
-            # dataframe and note there is not previous data.
-            summaries = pd.DataFrame(columns=activity_columns)
-            previous_date = None
-            previous_summary = None
+        # We will likely replace the last line, so make note of
+        # it and drop it from the dataframe
+        previous_date = summaries.at[summaries.index[-1], 'date']
+        previous_summary = summaries.tail(1).to_dict('records')[0]
+        summaries.drop(summaries.index[-1], inplace=True)
 
-        previous_url = None
+    else:
+        # First time pulling for this subject. Create a
+        # dataframe and note there is not previous data.
+        summaries = pd.DataFrame(columns=activity_columns)
+        previous_date = None
+        previous_summary = None
 
-        # Now check for new
-        url_list = activity_list(token, user_id, transaction)
-        for url in url_list:
-            # Get the summary and specifically note the date.
-            # There is only one final entry for each date.
-            summary = activity_summary(token, user_id, url)
-            date = summary['date']
+    previous_url = None
 
-            # Check if we have moved on to a new date. If so,
-            # add the previous one to the dataframe
-            if previous_summary and date != previous_date:
-                pruned_data = {key: previous_summary[key] for key in activity_columns}
-                summaries = summaries.append(pruned_data, ignore_index=True)
-                pull_steps(token, user_id, previous_url, date)
-                pull_zones(token, user_id, previous_url, date)
+    # Now check for new
+    url_list = activity_list(token, user_id, transaction)
+    for url in url_list:
+        # Get the summary and specifically note the date.
+        # There is only one final entry for each date.
+        summary = activity_summary(token, user_id, url)
+        date = summary['date']
 
-            previous_summary = summary
-            previous_date = summaries.at[summaries.index[-1], 'date']
-            previous_url = url
+        # Check if we have moved on to a new date. If so,
+        # add the previous one to the dataframe
+        if previous_summary and date != previous_date:
+            pruned_data = {key: previous_summary[key] for key in activity_columns}
+            summaries = summaries.append(pruned_data, ignore_index=True)
+            pull_steps(token, user_id, previous_url, previous_date)
+            pull_zones(token, user_id, previous_url, previous_date)
 
-        # Add the last row
-        pruned_data = {key: previous_summary[key] for key in activity_columns}
-        summaries = summaries.append(pruned_data, ignore_index=True)
-        pull_steps(token, user_id, url, date)
-        pull_zones(token, user_id, url, date)
+        previous_summary = summary
+        previous_date = summaries.at[summaries.index[-1], 'date']
+        previous_url = url
 
-        commit_activity(token, user_id, transaction)
-        summaries.to_csv(filename)
+    # Add the last row
+    pruned_data = {key: previous_summary[key] for key in activity_columns}
+    summaries = summaries.append(pruned_data, ignore_index=True)
+    pull_steps(token, user_id, url, date)
+    pull_zones(token, user_id, url, date)
+
+    commit_activity(token, user_id, transaction)
+    summaries.to_csv(filename)
