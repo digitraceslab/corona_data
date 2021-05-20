@@ -51,6 +51,24 @@ def extract_time(time_string):
     return (hours, minutes, seconds)
 
 
+def prune_data(data, columns):
+    ''' Clean data by extracting given set of columns and
+    adding an empty for missing data.
+
+    data : the original data to prune
+    columns : list of keys to keep in the data
+
+    returns : pruned data
+    '''
+    # Add empty strings for missing columns
+    for key in columns:
+        if key not in data:
+            data[key] = ''
+
+    # Construct a dictionary of only the listed columns
+    return {key: summary[key] for key in exercise_columns}
+
+
 def register(token, id=uuid.uuid4().hex):
     ''' Register a new user
 
@@ -421,7 +439,7 @@ def pull_activities(token, user_id):
         # Check if we have moved on to a new date. If so,
         # add the previous one to the dataframe
         if previous_summary and date != previous_date:
-            pruned_data = {key: previous_summary[key] for key in activity_columns}
+            pruned_data = prune_data(previous_summary, activity_columns)
             summaries = summaries.append(pruned_data, ignore_index=True)
             pull_steps(token, user_id, previous_url, previous_date)
             pull_zones(token, user_id, previous_url, previous_date)
@@ -431,7 +449,7 @@ def pull_activities(token, user_id):
         previous_url = url
 
     # Add the last row
-    pruned_data = {key: previous_summary[key] for key in activity_columns}
+    pruned_data = prune_data(summary, activity_columns)
     summaries = summaries.append(pruned_data, ignore_index=True)
     pull_steps(token, user_id, url, date)
     pull_zones(token, user_id, url, date)
@@ -475,13 +493,8 @@ def pull_exercises(token, user_id):
         # There is only one final entry for each start-time.
         summary = exercise_summary(token, user_id, url)
 
-        # some exercise don't record distance. Set this to
-        # empty string
-        if 'distance' not in summary:
-            summary['distance'] = ''
-
         # Add to the dataframe
-        pruned_data = {key: summary[key] for key in exercise_columns}
+        pruned_data = prune_data(summary, exercise_columns)
         summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Commit the transaction
@@ -513,8 +526,8 @@ def pull_sleep(token, user_id):
     # Now check for new
     summary_list = sleep_list(token)
     for summary in summary_list:
-        # Add to the dataframe
-        pruned_data = {key: summary[key] for key in sleep_columns}
+        # Take only the given set of columns
+        pruned_data = prune_data(summary, sleep_columns)
 
         # Sleep reports don't change once generated. If the date is
         # already found, just skip
