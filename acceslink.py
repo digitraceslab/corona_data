@@ -52,16 +52,13 @@ def register(token, id=uuid.uuid4().hex):
         'Accept': 'application/json',
         'Authorization': f'Bearer {token}'
     }
-    json={"member-id": id}
+    json = {"member-id": id}
 
     r = requests.post('https://www.polaraccesslink.com/v3/users', json=json, headers = headers)
 
     if r.status_code == 409:
         print("")
         return
-
-    print(r)
-    print(r.json())
 
 
 def activities_transaction(token, user_id):
@@ -80,15 +77,12 @@ def activities_transaction(token, user_id):
 
     r = requests.post(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions', headers = headers)
 
-    print(r)
-
     if r.status_code == 204:
         print("No data")
         return None
 
     r.raise_for_status()
 
-    print(r.json())
     r = r.json()
 
     return r['transaction-id']
@@ -110,21 +104,26 @@ def exercise_transaction(token, user_id):
 
     r = requests.post(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions', headers = headers)
 
-    print(r)
-
     if r.status_code == 204:
         print("No data")
         return None
 
     r.raise_for_status()
 
-    print(r.json())
     r = r.json()
 
     return r['transaction-id']
 
 
 def activity_list(token, user_id, transaction):
+    ''' Fetch a list of activity urls
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    transaction : open transaction
+
+    return : list of urls for fetching activity data
+    '''
 
     headers = {
         'Accept': 'application/json',
@@ -134,16 +133,41 @@ def activity_list(token, user_id, transaction):
     r = requests.get(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions/{transaction}', headers=headers)
     r.raise_for_status()
 
-    print(r.json())
     r = r.json()
     return r['activity-log']
 
 
-def activity_summary(token, user_id, url):
+def exercise_list(token, user_id, transaction):
+    ''' Fetch a list of exercise urls
 
-    # The url has a constant format. Split to find activity id
-    activity = url.split('/')[-1]
-    print(activity)
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    transaction : open transaction
+
+    return : True if there is new data
+    '''
+
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    r = requests.get(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions/{transaction}', headers=headers)
+    r.raise_for_status()
+
+    r = r.json()
+    return r['exercises']
+
+
+def activity_summary(token, user_id, url):
+    ''' Fetch the summary of a given activity
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    url : url for the activity (provided by activity_list)
+
+    return : summary dictionary
+    '''
 
     headers = {
         'Accept': 'application/json',
@@ -152,34 +176,70 @@ def activity_summary(token, user_id, url):
 
     r = requests.get(url, headers=headers)
     r.raise_for_status()
-    print(r)
 
-    print(r.json())
     summary = r.json()
-
     return summary
 
 
-def pull_steps(token, user_id, url, date):
+def exercise_summary(token, user_id, url):
+    ''' Fetch the summary of a given exercise
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    url : url for the exercise (provided by exercise_list)
+
+    return : summary dictionary
+    '''
 
     headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.get(url+'/step-samples', headers=headers)
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
-    r = r.json()
 
+    summary = r.json()
+    return summary
+
+
+def fetch_data(token, url):
+    ''' Fetch data from a given url using token authentication '''
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+    return r.json()
+
+
+def pull_steps(token, user_id, url, date):
+    ''' Fetch step data from a given activity and write
+    them to the step log. If step data for the day already
+    exists, overwrite.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    url : url for the activity (provided by activity_list)
+    date : the date of the activity data
+    '''
+
+    # Fetch the data
+    r = fetch_data(token, url+'/step-samples')
+
+    # Add date to all the samples
     samples = r['samples']
     for s in samples:
         s['date'] = date
 
+    # Remove any that do not have the steps-column
     samples = [s for s in samples if 'steps' in s]
 
-    columns = ["date", "time", "steps"]
+    # Read from the file or initialize an empty dataframe
     filename = f"activity_steps_{user_id}.csv"
-
+    columns = ["date", "time", "steps"]
     if os.path.isfile(filename):
         stepdata = pd.read_csv(filename)[columns]
     else:
@@ -193,22 +253,26 @@ def pull_steps(token, user_id, url, date):
     rows = stepdata[condition].index
     stepdata.drop(rows, inplace=True)
 
-    # Append the new data
+    # Append the new data and save
     stepdata = stepdata.append(samples, ignore_index=True)
     stepdata.to_csv(filename)
 
 
 def pull_zones(token, user_id, url, date):
+    ''' Fetch heart rate zone data from a given activity and
+    write them to the heart rate zone log. If heart rate zone
+    data for the day already exists, overwrite.
 
-    headers = {
-        'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
-    }
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    url : url for the activity (provided by activity_list)
+    date : the date of the activity data
+    '''
 
-    r = requests.get(url+'/zone-samples', headers=headers)
-    r.raise_for_status()
-    r = r.json()
+    # Fetch the data
+    r = fetch_data(token, url+'/zone-samples')
 
+    # Flatten the zone data hierarchy
     samples = []
     for rs in r['samples']:
         if 'activity-zones' in rs:
@@ -219,9 +283,9 @@ def pull_zones(token, user_id, url, date):
                      'minutes': minutes, 'seconds': seconds}
                 samples.append(s)
 
-    columns = ["date", "time", "index", "hours", "minutes", "seconds"]
+    # Read from the file or initialize an empty dataframe
     filename = f"activity_zones_{user_id}.csv"
-
+    columns = ["date", "time", "index", "hours", "minutes", "seconds"]
     if os.path.isfile(filename):
         zonedata = pd.read_csv(filename)[columns]
     else:
@@ -235,12 +299,13 @@ def pull_zones(token, user_id, url, date):
     rows = zonedata[condition].index
     zonedata.drop(rows, inplace=True)
 
-    # Append the new data
+    # Append the new data and write
     zonedata = zonedata.append(samples, ignore_index=True)
     zonedata.to_csv(filename)
 
 
 def commit_activity(token, user_id, transaction):
+    ''' Commit an activity transaction '''
 
     headers = {
         'Authorization': f'Bearer {token}'
@@ -248,12 +313,6 @@ def commit_activity(token, user_id, transaction):
 
     r = requests.put(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions/{transaction}', headers=headers)
     r.raise_for_status()
-    print(r)
-
-
-def pull_activity_data(token, user_id, url, date):
-    pull_steps(token, user_id, url, date)
-    pull_zones(token, user_id, url, date)
 
 
 def pull_activities(token, user_id):
