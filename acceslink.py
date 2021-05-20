@@ -248,8 +248,7 @@ def pull_steps(token, user_id, url, date):
     # This activity should have all data for the date. So
     # remove all data for this date and add the newly read data
     # instead
-    index = stepdata['date']
-    condition = stepdata['date'] == index
+    condition = stepdata['date'] == date
     rows = stepdata[condition].index
     stepdata.drop(rows, inplace=True)
 
@@ -294,7 +293,7 @@ def pull_zones(token, user_id, url, date):
     # This activity should have all data for the date. So
     # remove all data for this date and add the newly read data
     # instead
-    index = zonedata['date']
+    index = date
     condition = zonedata['date'] == index
     rows = zonedata[condition].index
     zonedata.drop(rows, inplace=True)
