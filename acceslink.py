@@ -14,7 +14,7 @@ exercise_columns = ["start-time", "calories", "distance", "duration", "training-
 sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
 
 # URL to the Polar Acceslink API
-api_url = api_url
+api_url = 'https://www.polaraccesslink.com/v3/users'
 
 def extract_time(time_string):
     ''' Utility for extracting hours, minutes and seconds
