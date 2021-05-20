@@ -316,6 +316,11 @@ def commit_activity(token, user_id, transaction):
 
 
 def pull_activities(token, user_id):
+    ''' Pull activity date for a given user and write to csv files.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    '''
 
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
