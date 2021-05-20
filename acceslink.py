@@ -66,7 +66,7 @@ def prune_data(data, columns):
             data[key] = ''
 
     # Construct a dictionary of only the listed columns
-    return {key: summary[key] for key in exercise_columns}
+    return {key: data[key] for key in columns}
 
 
 def register(token, id=uuid.uuid4().hex):
