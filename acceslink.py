@@ -144,7 +144,7 @@ def exercise_list(token, user_id, transaction):
     user_id : The polar user ID of the user
     transaction : open transaction
 
-    return : True if there is new data
+    return : List of urls for fetching exercise data
     '''
 
     headers = {
@@ -157,6 +157,26 @@ def exercise_list(token, user_id, transaction):
 
     r = r.json()
     return r['exercises']
+
+
+def sleep_list(token):
+    ''' Fetch a list of exercise urls
+
+    token : The oauth2 authorization token of the user
+
+    return : List of sleep summaries
+    '''
+
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    r = requests.get(f'https://www.polaraccesslink.com/v3/users/sleep', headers=headers)
+    r.raise_for_status()
+
+    r = r.json()
+    return r['nights']
 
 
 def activity_summary(token, user_id, url):
@@ -397,7 +417,7 @@ def pull_activities(token, user_id):
 
 
 def pull_exercises(token, user_id):
-    ''' Pull exercise date for a given user and write to csv files.
+    ''' Pull exercise data for a given user and write to csv files.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -442,6 +462,45 @@ def pull_exercises(token, user_id):
 
     # Commit the transaction
     commit_exercise(token, user_id, transaction)
+
+    # Write to the file
+    summaries.to_csv(filename)
+
+
+def pull_sleep(token, user_id):
+    ''' Pull sleep data for a given user and write to csv files.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    '''
+
+    # Set filename and columns to keep
+    filename = f"sleep_summary_{user_id}.csv"
+    sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+
+    # Load old data first
+    if os.path.isfile(filename):
+        # The file already exists, so read current entries
+        summaries = pd.read_csv(filename)[sleep_columns]
+    else:
+        # First time pulling for this subject. Create a
+        # dataframe.
+        summaries = pd.DataFrame(columns=sleep_columns)
+
+    # Now check for new
+    summary_list = sleep_list(token)
+    for summary in summary_list:
+        print(summary)
+        # Add to the dataframe
+        pruned_data = {key: summary[key] for key in sleep_columns}
+
+        # Sleep reports don't change once generated. If the date is
+        # already found, just skip
+        index = pruned_data['date']
+        condition = summaries['date'] == index
+        rows = summaries[condition].index
+        summaries.drop(rows, inplace=True)
+        summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
     summaries.to_csv(filename)
