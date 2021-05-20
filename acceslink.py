@@ -315,6 +315,17 @@ def commit_activity(token, user_id, transaction):
     r.raise_for_status()
 
 
+def commit_exercise(token, user_id, transaction):
+    ''' Commit an exercise transaction '''
+
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+
+    r = requests.put(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions/{transaction}', headers=headers)
+    r.raise_for_status()
+
+
 def pull_activities(token, user_id):
     ''' Pull activity date for a given user and write to csv files.
 
@@ -371,8 +382,11 @@ def pull_activities(token, user_id):
             pull_zones(token, user_id, previous_url, previous_date)
 
         previous_summary = summary
-        previous_date = summaries.at[summaries.index[-1], 'date']
+        previous_date = date
         previous_url = url
+
+    # Commit the transaction
+    commit_activity(token, user_id, transaction)
 
     # Add the last row
     pruned_data = {key: previous_summary[key] for key in activity_columns}
@@ -380,5 +394,55 @@ def pull_activities(token, user_id):
     pull_steps(token, user_id, url, date)
     pull_zones(token, user_id, url, date)
 
-    commit_activity(token, user_id, transaction)
+    summaries.to_csv(filename)
+
+
+def pull_exercises(token, user_id):
+    ''' Pull exercise date for a given user and write to csv files.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    '''
+
+    # Set filename and columns to keep
+    filename = f"exercise_summary_{user_id}.csv"
+    exercise_columns = ["id", "start-time", "calories", "distance", "duration", "training-load"]
+
+    # Fetch data from the API
+    transaction = exercise_transaction(token, user_id)
+
+    if transaction is None:
+        # No new data, nothing to do
+        return
+
+    # Found new data. Check for old data first
+    if os.path.isfile(filename):
+        # The file already exists, so read current entries
+        summaries = pd.read_csv(filename)[exercise_columns]
+    else:
+        # First time pulling for this subject. Create a
+        # dataframe.
+        summaries = pd.DataFrame(columns=exercise_columns)
+
+    # Now check for new
+    url_list = exercise_list(token, user_id, transaction)
+    for url in url_list:
+        # Get the summary and specifically note the start-time.
+        # There is only one final entry for each start-time.
+        summary = exercise_summary(token, user_id, url)
+
+        # some exercise don't record distance. Set this to
+        # empty string
+        if 'distance' not in summary:
+            summary['distance'] = ''
+        print(summary)
+
+        # Add to the dataframe
+        pruned_data = {key: summary[key] for key in exercise_columns}
+        summaries = summaries.append(pruned_data, ignore_index=True)
+
+    # Commit the transaction
+    commit_exercise(token, user_id, transaction)
+
+    # Write to the file
     summaries.to_csv(filename)
