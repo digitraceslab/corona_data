@@ -68,7 +68,7 @@ def register(token, id=uuid.uuid4().hex):
     r = requests.post(api_url, json=json, headers = headers)
 
     if r.status_code == 409:
-        print("")
+        print("User already registered")
         return
 
 
@@ -90,7 +90,7 @@ def activities_transaction(token, user_id):
     r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
-        print("No data")
+        print("No activity data")
         return None
 
     r.raise_for_status()
@@ -118,7 +118,7 @@ def exercise_transaction(token, user_id):
     r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
-        print("No data")
+        print("No exercise data")
         return None
 
     r.raise_for_status()
@@ -248,6 +248,8 @@ def fetch_data(token, url):
 
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+    if r.status_code == 204:
+        return None
     return r.json()
 
 
@@ -264,6 +266,9 @@ def pull_steps(token, user_id, url, date):
 
     # Fetch the data
     r = fetch_data(token, url+'/step-samples')
+    if r is None:
+        print("No step data, is transaction open?")
+        return
 
     # Add date to all the samples
     samples = r['samples']
@@ -306,6 +311,9 @@ def pull_zones(token, user_id, url, date):
 
     # Fetch the data
     r = fetch_data(token, url+'/zone-samples')
+    if r is None:
+        print("No zone data, is transaction open?")
+        return
 
     # Flatten the zone data hierarchy
     samples = []
@@ -422,14 +430,14 @@ def pull_activities(token, user_id):
         previous_date = date
         previous_url = url
 
-    # Commit the transaction
-    commit_activity(token, user_id, transaction)
-
     # Add the last row
     pruned_data = {key: previous_summary[key] for key in activity_columns}
     summaries = summaries.append(pruned_data, ignore_index=True)
     pull_steps(token, user_id, url, date)
     pull_zones(token, user_id, url, date)
+
+    # Commit the transaction
+    commit_activity(token, user_id, transaction)
 
     summaries.to_csv(filename)
 
@@ -471,7 +479,6 @@ def pull_exercises(token, user_id):
         # empty string
         if 'distance' not in summary:
             summary['distance'] = ''
-        print(summary)
 
         # Add to the dataframe
         pruned_data = {key: summary[key] for key in exercise_columns}
@@ -506,7 +513,6 @@ def pull_sleep(token, user_id):
     # Now check for new
     summary_list = sleep_list(token)
     for summary in summary_list:
-        print(summary)
         # Add to the dataframe
         pruned_data = {key: summary[key] for key in sleep_columns}
 
