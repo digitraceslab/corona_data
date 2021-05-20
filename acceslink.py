@@ -69,7 +69,7 @@ def prune_data(data, columns):
     return {key: data[key] for key in columns}
 
 
-def register(token, id=uuid.uuid4().hex):
+def register(token):
     ''' Register a new user
 
     token : The oauth2 authorization token of the user
@@ -81,7 +81,7 @@ def register(token, id=uuid.uuid4().hex):
         'Accept': 'application/json',
         'Authorization': f'Bearer {token}'
     }
-    json = {"member-id": id}
+    json = {"member-id": uuid.uuid4().hex}
 
     r = requests.post(api_url, json=json, headers = headers)
 
