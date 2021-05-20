@@ -40,28 +40,6 @@ def extract_time(time_string):
     return (hours, minutes, seconds)
 
 
-def replace_or_append_csv(filename, data, columns, index_column):
-
-    if os.path.isfile(filename):
-        dataframe = pd.read_csv(filename)[columns]
-    else:
-        dataframe = pd.DataFrame(columns=columns)
-
-    pruned_data = []
-    for full_data in data:
-        pruned_data = {key: full_data[key] for key in columns}
-
-        index = pruned_data[index_column]
-        # remove any data with the same index_column
-        condition = dataframe[index_column] == index
-        rows = dataframe[condition].index
-        dataframe.drop(rows, inplace=True)
-        # Append the new one
-        dataframe = dataframe.append(pruned_data, ignore_index=True)
-
-    dataframe[columns].to_csv(filename)
-
-
 def register(token, id=uuid.uuid4().hex):
     ''' Register a new user
 
@@ -200,8 +178,24 @@ def pull_steps(token, user_id, url, date):
     samples = [s for s in samples if 'steps' in s]
 
     columns = ["date", "time", "steps"]
-    filename = f"activity_steps_{user_id}_{date}.csv"
-    replace_or_append_csv(filename, samples, columns, 'time')
+    filename = f"activity_steps_{user_id}.csv"
+
+    if os.path.isfile(filename):
+        stepdata = pd.read_csv(filename)[columns]
+    else:
+        stepdata = pd.DataFrame(columns=columns)
+
+    # This activity should have all data for the date. So
+    # remove all data for this date and add the newly read data
+    # instead
+    index = stepdata['date']
+    condition = stepdata['date'] == index
+    rows = stepdata[condition].index
+    stepdata.drop(rows, inplace=True)
+
+    # Append the new data
+    stepdata = stepdata.append(samples, ignore_index=True)
+    stepdata.to_csv(filename)
 
 
 def pull_zones(token, user_id, url, date):
@@ -226,8 +220,24 @@ def pull_zones(token, user_id, url, date):
                 samples.append(s)
 
     columns = ["date", "time", "index", "hours", "minutes", "seconds"]
-    filename = f"activity_zones_{user_id}_{date}.csv"
-    replace_or_append_csv(filename, samples, columns, 'time')
+    filename = f"activity_zones_{user_id}.csv"
+
+    if os.path.isfile(filename):
+        zonedata = pd.read_csv(filename)[columns]
+    else:
+        zonedata = pd.DataFrame(columns=columns)
+
+    # This activity should have all data for the date. So
+    # remove all data for this date and add the newly read data
+    # instead
+    index = zonedata['date']
+    condition = zonedata['date'] == index
+    rows = zonedata[condition].index
+    zonedata.drop(rows, inplace=True)
+
+    # Append the new data
+    zonedata = zonedata.append(samples, ignore_index=True)
+    zonedata.to_csv(filename)
 
 
 def commit_activity(token, user_id, transaction):
@@ -241,6 +251,11 @@ def commit_activity(token, user_id, transaction):
     print(r)
 
 
+def pull_activity_data(token, user_id, url, date):
+    pull_steps(token, user_id, url, date)
+    pull_zones(token, user_id, url, date)
+
+
 def pull_activities(token, user_id):
 
     # To avoid writing multiple entries for the same day,
@@ -248,25 +263,55 @@ def pull_activities(token, user_id):
     filename = f"activity_summary_{user_id}.csv"
     activity_columns = ["id", "date", "created", "calories", "active-calories", "duration", "active-steps"]
 
-    if os.path.isfile(filename):
-        summaries = pd.read_csv(filename)[activity_columns]
-    else:
-        summaries = pd.DataFrame(columns=activity_columns)
-
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
     if transaction is not None:
+
+        # Found new data. Check for old data first
+        if os.path.isfile(filename):
+            # The file already exists, so read current entries
+            summaries = pd.read_csv(filename)[activity_columns]
+
+            # We will likely replace the last line, so make note of
+            # it and drop it from the dataframe
+            previous_date = summaries.at[summaries.index[-1], 'date']
+            previous_summary = summaries.tail(1).to_dict('records')[0]
+            summaries.drop(summaries.index[-1], inplace=True)
+
+        else:
+            # First time pulling for this subject. Create a
+            # dataframe and note there is not previous data.
+            summaries = pd.DataFrame(columns=activity_columns)
+            previous_date = None
+            previous_summary = None
+
+        previous_url = None
+
+        # Now check for new
         url_list = activity_list(token, user_id, transaction)
-
-        summary_list = []
         for url in url_list:
+            # Get the summary and specifically note the date.
+            # There is only one final entry for each date.
             summary = activity_summary(token, user_id, url)
-            summary_list.append(summary)
-
             date = summary['date']
-            pull_steps(token, user_id, url, date)
-            pull_zones(token, user_id, url, date)
+
+            # Check if we have moved on to a new date. If so,
+            # add the previous one to the dataframe
+            if previous_summary and date != previous_date:
+                pruned_data = {key: previous_summary[key] for key in activity_columns}
+                summaries = summaries.append(pruned_data, ignore_index=True)
+                pull_steps(token, user_id, previous_url, date)
+                pull_zones(token, user_id, previous_url, date)
+
+            previous_summary = summary
+            previous_date = summaries.at[summaries.index[-1], 'date']
+            previous_url = url
+
+        # Add the last row
+        pruned_data = {key: previous_summary[key] for key in activity_columns}
+        summaries = summaries.append(pruned_data, ignore_index=True)
+        pull_steps(token, user_id, url, date)
+        pull_zones(token, user_id, url, date)
 
         commit_activity(token, user_id, transaction)
-        summaries[activity_columns].to_csv(filename)
-        replace_or_append_csv(filename, summary_list, activity_columns, 'date')
+        summaries.to_csv(filename)
