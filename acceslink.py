@@ -1,9 +1,20 @@
 import os
 import requests
 import uuid
-import csv
 import pandas as pd
 
+
+# Settings
+# ========
+#
+# Set columns to keep from activity data, exercise data and
+# sleep data
+activity_columns = ["date", "calories", "active-calories", "duration", "active-steps"]
+exercise_columns = ["start-time", "calories", "distance", "duration", "training-load"]
+sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+
+# URL to the Polar Acceslink API
+api_url = api_url
 
 def extract_time(time_string):
     ''' Utility for extracting hours, minutes and seconds
@@ -54,7 +65,7 @@ def register(token, id=uuid.uuid4().hex):
     }
     json = {"member-id": id}
 
-    r = requests.post('https://www.polaraccesslink.com/v3/users', json=json, headers = headers)
+    r = requests.post(api_url, json=json, headers = headers)
 
     if r.status_code == 409:
         print("")
@@ -75,7 +86,8 @@ def activities_transaction(token, user_id):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.post(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions', headers = headers)
+    url = api_url+f'/{user_id}/activity-transactions'
+    r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
         print("No data")
@@ -102,7 +114,8 @@ def exercise_transaction(token, user_id):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.post(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions', headers = headers)
+    url = api_url + f'/{user_id}/exercise-transactions'
+    r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
         print("No data")
@@ -130,7 +143,8 @@ def activity_list(token, user_id, transaction):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.get(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions/{transaction}', headers=headers)
+    url = api_url + f'/{user_id}/activity-transactions/{transaction}'
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
 
     r = r.json()
@@ -152,7 +166,8 @@ def exercise_list(token, user_id, transaction):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.get(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions/{transaction}', headers=headers)
+    url = api_url + f'/{user_id}/exercise-transactions/{transaction}'
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
 
     r = r.json()
@@ -172,7 +187,8 @@ def sleep_list(token):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.get(f'https://www.polaraccesslink.com/v3/users/sleep', headers=headers)
+    url = api_url + '/sleep'
+    r = requests.get(url, headers=headers)
     r.raise_for_status()
 
     r = r.json()
@@ -330,7 +346,8 @@ def commit_activity(token, user_id, transaction):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.put(f'https://www.polaraccesslink.com/v3/users/{user_id}/activity-transactions/{transaction}', headers=headers)
+    url = api_url+f'/{user_id}/activity-transactions/{transaction}'
+    r = requests.put(url, headers=headers)
     r.raise_for_status()
 
 
@@ -341,7 +358,8 @@ def commit_exercise(token, user_id, transaction):
         'Authorization': f'Bearer {token}'
     }
 
-    r = requests.put(f'https://www.polaraccesslink.com/v3/users/{user_id}/exercise-transactions/{transaction}', headers=headers)
+    url = api_url+f'/{user_id}/exercise-transactions/{transaction}'
+    r = requests.put(url, headers=headers)
     r.raise_for_status()
 
 
@@ -355,7 +373,7 @@ def pull_activities(token, user_id):
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
     filename = f"activity_summary_{user_id}.csv"
-    activity_columns = ["id", "date", "created", "calories", "active-calories", "duration", "active-steps"]
+
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
@@ -423,9 +441,8 @@ def pull_exercises(token, user_id):
     user_id : The polar user ID of the user
     '''
 
-    # Set filename and columns to keep
+    # Set filename
     filename = f"exercise_summary_{user_id}.csv"
-    exercise_columns = ["id", "start-time", "calories", "distance", "duration", "training-load"]
 
     # Fetch data from the API
     transaction = exercise_transaction(token, user_id)
@@ -474,9 +491,8 @@ def pull_sleep(token, user_id):
     user_id : The polar user ID of the user
     '''
 
-    # Set filename and columns to keep
+    # Set filename
     filename = f"sleep_summary_{user_id}.csv"
-    sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
 
     # Load old data first
     if os.path.isfile(filename):
@@ -504,3 +520,15 @@ def pull_sleep(token, user_id):
 
     # Write to the file
     summaries.to_csv(filename)
+
+
+def pull_subject_data(token, user_id):
+    ''' Pull subject activity, exercise and sleep data and write
+    to csv files.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    '''
+    pull_activities(token, user_id)
+    pull_exercises(token, user_id)
+    pull_sleep(token, user_id)
