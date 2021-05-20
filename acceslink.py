@@ -551,3 +551,11 @@ def pull_subject_data(token, user_id):
     pull_activities(token, user_id)
     pull_exercises(token, user_id)
     pull_sleep(token, user_id)
+
+
+# If run as a script, read the token file and pull all data
+if __name__ == "__main__":
+    token_file = open("tokens", "r")
+    for line in token_file:
+        token, user = line.split(' ')
+        pull_subject_data(token, int(user))
