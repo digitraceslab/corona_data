@@ -2,7 +2,7 @@ import os
 import requests
 import uuid
 import pandas as pd
-
+from datetime import datetime
 
 # Settings
 # ========
@@ -389,6 +389,19 @@ def commit_exercise(token, user_id, transaction):
     r.raise_for_status()
 
 
+def time_to_sec(time_string):
+    ''' Utility for mapping a time string to an integer
+    number of seconds.
+
+    time_string : time in the %Y-%m-%dT%H:%M:%S.%f format
+    return : time in seconds since 1900-1-1T0:0:0
+    '''
+    format_string = '%Y-%m-%dT%H:%M:%S.%f'
+    date_time = datetime.strptime(time_string, format_string)
+    time_delta = date_time - datetime(1900, 1, 1)
+    return time_delta.total_seconds()
+
+
 def pull_activities(token, user_id):
     ''' Pull activity date for a given user and write to csv files.
 
@@ -399,7 +412,6 @@ def pull_activities(token, user_id):
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
     filename = f"activity_summary_{user_id}.csv"
-
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
@@ -413,50 +425,61 @@ def pull_activities(token, user_id):
         # The file already exists, so read current entries
         summaries = pd.read_csv(filename)[activity_columns]
 
-        # We will likely replace the last line, so make note of
-        # it and drop it from the dataframe
-        previous_date = summaries.at[summaries.index[-1], 'date']
-        previous_summary = summaries.tail(1).to_dict('records')[0]
-        summaries.drop(summaries.index[-1], inplace=True)
-
     else:
         # First time pulling for this subject. Create a
         # dataframe and note there is not previous data.
         summaries = pd.DataFrame(columns=activity_columns)
-        previous_date = None
-        previous_summary = None
 
-    previous_url = None
-
-    # Now check for new
+    # Get the list of summaries
     url_list = activity_list(token, user_id, transaction)
+
+    # The list of summaries may contain multiple summaries
+    # for a given date. They are ordered by created time,
+    # so the last one contains the latest data.
+    # So first check all summaries and keep the last one
+    # for each date
+    summary_list = {}
     for url in url_list:
         # Get the summary and specifically note the date.
         # There is only one final entry for each date.
         summary = activity_summary(token, user_id, url)
         date = summary['date']
+        this_time = time_to_sec(summary['created'])
+        summary_info = {
+            'summary': summary,
+            'url': url,
+            'time': this_time
+        }
 
-        # Check if we have moved on to a new date. If so,
-        # add the previous one to the dataframe
-        if previous_summary and date != previous_date:
-            pruned_data = prune_data(previous_summary, activity_columns)
-            summaries = summaries.append(pruned_data, ignore_index=True)
-            pull_steps(token, user_id, previous_url, previous_date)
-            pull_zones(token, user_id, previous_url, previous_date)
+        if date not in summary_list:
+            summary_list[date] = summary_info
 
-        previous_summary = summary
-        previous_date = date
-        previous_url = url
+        else:
+            latest_time = summary_list[date]['time']
+            if this_time > latest_time:
+                summary_list[date] = summary_info
 
-    # Add the last row
-    pruned_data = prune_data(summary, activity_columns)
-    summaries = summaries.append(pruned_data, ignore_index=True)
-    pull_steps(token, user_id, url, date)
-    pull_zones(token, user_id, url, date)
+    # Now check for new
+    for summary_info in summary_list.values():
+        # Prune the summary data
+        summary = summary_info['summary']
+        pruned_data = prune_data(summary, activity_columns)
 
-    # Commit the transaction
+        # Remove any previous entry with the same date
+        index = pruned_data['date']
+        condition = summaries['date'] == index
+        rows = summaries[condition].index
+        summaries.drop(rows, inplace=True)
+
+        # Add the summary
+        summaries = summaries.append(pruned_data, ignore_index=True)
+
+        # Get step and zone data for the summary
+        pull_steps(token, user_id, summary_info['url'], summary['date'])
+        pull_zones(token, user_id, summary_info['url'], summary['date'])
+
+    # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
-
     summaries.to_csv(filename)
 
 
