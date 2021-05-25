@@ -37,7 +37,7 @@ def extract_time(time_string):
             pass
         elif c == 'H':
             # Hours
-            seconds += 3600*float(t)
+            seconds += 3600*int(t)
             t = ''
         elif c == 'M':
             # Minutes
@@ -45,7 +45,7 @@ def extract_time(time_string):
             t = ''
         elif c == 'S':
             # Seconds
-            seconds = int(t)
+            seconds = float(t)
             t = ''
         else:
             t += c
