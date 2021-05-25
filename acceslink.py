@@ -16,18 +16,17 @@ sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "li
 # URL to the Polar Acceslink API
 api_url = 'https://www.polaraccesslink.com/v3/users'
 
+
 def extract_time(time_string):
     ''' Utility for extracting hours, minutes and seconds
     from the API time format
 
     time_string : time value returened by the Acceslink API
 
-    return : tuple of hours, minutes and seconds
+    return : time in seconds
     '''
 
     t = ''
-    hours = 0
-    minutes = 0
     seconds = 0
     for c in time_string:
         if c == 'P':
@@ -37,18 +36,21 @@ def extract_time(time_string):
             # The string starts with PT, which we skip
             pass
         elif c == 'H':
-            hours = int(t)
+            # Hours
+            seconds += 3600*float(t)
             t = ''
         elif c == 'M':
-            minutes = int(t)
+            # Minutes
+            seconds = 60*int(t)
             t = ''
         elif c == 'S':
+            # Seconds
             seconds = int(t)
             t = ''
         else:
             t += c
 
-    return (hours, minutes, seconds)
+    return seconds
 
 
 def prune_data(data, columns):
@@ -338,15 +340,14 @@ def pull_zones(token, user_id, url, date):
     for rs in r['samples']:
         if 'activity-zones' in rs:
             for zone in rs['activity-zones']:
-                hours, minutes, seconds = extract_time(zone['inzone'])
+                duration = extract_time(zone['inzone'])
                 s = {'date': date, 'time': rs['time'],
-                     'index': zone['index'], 'hours': hours,
-                     'minutes': minutes, 'seconds': seconds}
+                     'index': zone['index'], 'duration': duration}
                 samples.append(s)
 
     # Read from the file or initialize an empty dataframe
     filename = f"activity_zones_{user_id}.csv"
-    columns = ["date", "time", "index", "hours", "minutes", "seconds"]
+    columns = ["date", "time", "index", "duration"]
     if os.path.isfile(filename):
         zonedata = pd.read_csv(filename)[columns]
     else:
@@ -464,6 +465,7 @@ def pull_activities(token, user_id):
         # Prune the summary data
         summary = summary_info['summary']
         pruned_data = prune_data(summary, activity_columns)
+        pruned_data['duration'] = extract_time(pruned_data['duration'])
 
         # Remove any previous entry with the same date
         index = pruned_data['date']
@@ -518,6 +520,7 @@ def pull_exercises(token, user_id):
 
         # Add to the dataframe
         pruned_data = prune_data(summary, exercise_columns)
+        pruned_data['duration'] = extract_time(pruned_data['duration'])
         summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Commit the transaction
