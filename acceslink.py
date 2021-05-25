@@ -10,8 +10,14 @@ from datetime import datetime
 # Set columns to keep from activity data, exercise data and
 # sleep data
 activity_columns = ["date", "calories", "active-calories", "duration", "active-steps"]
-exercise_columns = ["start-time", "calories", "distance", "duration", "training-load"]
+exercise_columns = ["start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
 sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+
+# Descriptive names for heart rate zones
+zone_names = ['sleep', 'sedentary', 'light', 'moderate', 'vigorous', 'not worn']
+
+# Descriptive names for the sample indices
+sample_names = ['Heart rate (bpm)', 'Speed (km/h)', 'Cadence (rpm)', 'Altitude (m)', 'Power (W)', 'Power pedaling index (%)', 'Power left-right balance (%)', 'Air pressure (hpa)', 'Running cadence (spm)', 'Temperature (C)', 'Distance (m)', 'RR Interval (ms)']
 
 # URL to the Polar Acceslink API
 api_url = 'https://www.polaraccesslink.com/v3/users'
@@ -237,6 +243,57 @@ def activity_summary(token, user_id, url):
     return summary
 
 
+def pull_exercise_samples(token, user_id, url, exercise_start_time):
+    ''' Fetch exercise sample data from a given exercise and
+    write them to the log.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    url : url for the activity (provided by activity_list)
+    exercise_start_time : The start time of the exercise (unique identifier)
+    '''
+
+    # Read from the file or initialize an empty dataframe
+    filename = f"exercise_samples_{user_id}.csv"
+    columns = ['exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
+    if os.path.isfile(filename):
+        sampledata = pd.read_csv(filename)[columns]
+    else:
+        sampledata = pd.DataFrame(columns=columns)
+
+    # Drop any data for this exercise
+    condition = sampledata['exercise-start-time'] == exercise_start_time
+    rows = sampledata[condition].index
+    sampledata.drop(rows, inplace=True)
+
+    # fetch the samples
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    r = requests.get(url+'/samples', headers=headers)
+    r.raise_for_status()
+
+    for sample_url in r.json()['samples']:
+        sample = requests.get(sample_url, headers=headers)
+        sample = sample.json()
+        sample_list = sample['data'].split(',')
+        for i, sample_line in enumerate(sample_list):
+            pruned = {
+                       'exercise-start-time': exercise_start_time,
+                       'sample-index': i,
+                       'recording-rate': sample['recording-rate'],
+                       'sample-type': sample['sample-type'],
+                       'sample-name': sample_names[sample['sample-type']],
+                       'sample': sample_line
+                     }
+            sampledata = sampledata.append(pruned, ignore_index=True)
+
+    # write to file
+    sampledata.to_csv(filename)
+
+
 def exercise_summary(token, user_id, url):
     ''' Fetch the summary of a given exercise
 
@@ -341,8 +398,11 @@ def pull_zones(token, user_id, url, date):
         if 'activity-zones' in rs:
             for zone in rs['activity-zones']:
                 duration = extract_time(zone['inzone'])
+
                 s = {'date': date, 'time': rs['time'],
-                     'index': zone['index'], 'duration': duration}
+                     'zone index': zone['index'],
+                     'zone name': zone_names[zone['index']],
+                     'duration': duration}
                 samples.append(s)
 
     # Read from the file or initialize an empty dataframe
@@ -518,10 +578,16 @@ def pull_exercises(token, user_id):
         # There is only one final entry for each start-time.
         summary = exercise_summary(token, user_id, url)
 
+        # collapse the heart rate hierarchy
+        summary["average-heart-rate"] = summary["heart-rate"]["average"]
+        summary["maximum-heart-rate"] = summary["heart-rate"]["maximum"]
+
         # Add to the dataframe
         pruned_data = prune_data(summary, exercise_columns)
         pruned_data['duration'] = extract_time(pruned_data['duration'])
         summaries = summaries.append(pruned_data, ignore_index=True)
+
+        pull_exercise_samples(token, user_id, url, pruned_data['start-time'])
 
     # Commit the transaction
     commit_exercise(token, user_id, transaction)
