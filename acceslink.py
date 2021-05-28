@@ -9,9 +9,9 @@ from datetime import datetime
 #
 # Set columns to keep from activity data, exercise data and
 # sleep data
-activity_columns = ["date", "calories", "active-calories", "duration", "active-steps"]
-exercise_columns = ["start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
-sleep_columns = ["date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+activity_columns = ["user_id", "date", "calories", "active-calories", "duration", "active-steps"]
+exercise_columns = ["user_id", "start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
+sleep_columns = ["user_id", "date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
 
 # Descriptive names for heart rate zones
 zone_names = ['sleep', 'sedentary', 'light', 'moderate', 'vigorous', 'not worn']
@@ -254,8 +254,8 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
     '''
 
     # Read from the file or initialize an empty dataframe
-    filename = f"exercise_samples_{user_id}.csv"
-    columns = ['exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
+    filename = f"exercise_samples.csv"
+    columns = ['user_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
     if os.path.isfile(filename):
         sampledata = pd.read_csv(filename)[columns]
     else:
@@ -263,6 +263,7 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
 
     # Drop any data for this exercise
     condition = sampledata['exercise-start-time'] == exercise_start_time
+    condition = condition & sampledata['user_id'] == user_id
     rows = sampledata[condition].index
     sampledata.drop(rows, inplace=True)
 
@@ -281,6 +282,7 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
         sample_list = sample['data'].split(',')
         for i, sample_line in enumerate(sample_list):
             pruned = {
+                       'user_id': user_id,
                        'exercise-start-time': exercise_start_time,
                        'sample-index': i,
                        'recording-rate': sample['recording-rate'],
@@ -351,13 +353,14 @@ def pull_steps(token, user_id, url, date):
     samples = r['samples']
     for s in samples:
         s['date'] = date
+        s['user_id'] = user_id
 
     # Remove any that do not have the steps-column
     samples = [s for s in samples if 'steps' in s]
 
     # Read from the file or initialize an empty dataframe
-    filename = f"activity_steps_{user_id}.csv"
-    columns = ["date", "time", "steps"]
+    filename = f"activity_steps.csv"
+    columns = ["user_id", "date", "time", "steps"]
     if os.path.isfile(filename):
         stepdata = pd.read_csv(filename)[columns]
     else:
@@ -367,6 +370,7 @@ def pull_steps(token, user_id, url, date):
     # remove all data for this date and add the newly read data
     # instead
     condition = stepdata['date'] == date
+    condition = condition & stepdata['user_id'] == user_id
     rows = stepdata[condition].index
     stepdata.drop(rows, inplace=True)
 
@@ -399,15 +403,16 @@ def pull_zones(token, user_id, url, date):
             for zone in rs['activity-zones']:
                 duration = extract_time(zone['inzone'])
 
-                s = {'date': date, 'time': rs['time'],
+                s = {'user_id': user_id, 'date': date,
+                     'time': rs['time'],
                      'zone index': zone['index'],
                      'zone name': zone_names[zone['index']],
                      'duration': duration}
                 samples.append(s)
 
     # Read from the file or initialize an empty dataframe
-    filename = f"activity_zones_{user_id}.csv"
-    columns = ["date", "time", "index", "duration"]
+    filename = f"activity_zones.csv"
+    columns = ["user_id", "date", "time", "index", "duration"]
     if os.path.isfile(filename):
         zonedata = pd.read_csv(filename)[columns]
     else:
@@ -418,6 +423,7 @@ def pull_zones(token, user_id, url, date):
     # instead
     index = date
     condition = zonedata['date'] == index
+    condition = condition & zonedata['user_id'] == user_id
     rows = zonedata[condition].index
     zonedata.drop(rows, inplace=True)
 
@@ -472,7 +478,7 @@ def pull_activities(token, user_id):
 
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
-    filename = f"activity_summary_{user_id}.csv"
+    filename = f"activity_summary.csv"
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
@@ -526,10 +532,12 @@ def pull_activities(token, user_id):
         summary = summary_info['summary']
         pruned_data = prune_data(summary, activity_columns)
         pruned_data['duration'] = extract_time(pruned_data['duration'])
+        pruned_data['user_id'] = user_id
 
         # Remove any previous entry with the same date
         index = pruned_data['date']
         condition = summaries['date'] == index
+        condition = condition & summaries['user_id'] == user_id
         rows = summaries[condition].index
         summaries.drop(rows, inplace=True)
 
@@ -553,7 +561,7 @@ def pull_exercises(token, user_id):
     '''
 
     # Set filename
-    filename = f"exercise_summary_{user_id}.csv"
+    filename = f"exercise_summary.csv"
 
     # Fetch data from the API
     transaction = exercise_transaction(token, user_id)
@@ -581,6 +589,7 @@ def pull_exercises(token, user_id):
         # collapse the heart rate hierarchy
         summary["average-heart-rate"] = summary["heart-rate"]["average"]
         summary["maximum-heart-rate"] = summary["heart-rate"]["maximum"]
+        summary['user_id'] = user_id
 
         # Add to the dataframe
         pruned_data = prune_data(summary, exercise_columns)
@@ -604,7 +613,7 @@ def pull_sleep(token, user_id):
     '''
 
     # Set filename
-    filename = f"sleep_summary_{user_id}.csv"
+    filename = f"sleep_summary.csv"
 
     # Load old data first
     if os.path.isfile(filename):
@@ -620,11 +629,13 @@ def pull_sleep(token, user_id):
     for summary in summary_list:
         # Take only the given set of columns
         pruned_data = prune_data(summary, sleep_columns)
+        pruned_data['user_id'] = user_id
 
         # Sleep reports don't change once generated. If the date is
         # already found, just skip
         index = pruned_data['date']
         condition = summaries['date'] == index
+        condition = condition & summaries['user_id'] == user_id
         rows = summaries[condition].index
         summaries.drop(rows, inplace=True)
         summaries = summaries.append(pruned_data, ignore_index=True)
