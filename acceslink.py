@@ -9,9 +9,9 @@ from datetime import datetime
 #
 # Set columns to keep from activity data, exercise data and
 # sleep data
-activity_columns = ["user_id", "date", "calories", "active-calories", "duration", "active-steps"]
-exercise_columns = ["user_id", "start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
-sleep_columns = ["user_id", "date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+activity_columns = ["subject_id", "date", "calories", "active-calories", "duration", "active-steps"]
+exercise_columns = ["subject_id", "start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
+sleep_columns = ["subject_id", "date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
 
 # Descriptive names for heart rate zones
 zone_names = ['sleep', 'sedentary', 'light', 'moderate', 'vigorous', 'not worn']
@@ -243,7 +243,7 @@ def activity_summary(token, user_id, url):
     return summary
 
 
-def pull_exercise_samples(token, user_id, url, exercise_start_time):
+def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     ''' Fetch exercise sample data from a given exercise and
     write them to the log.
 
@@ -254,8 +254,8 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
     '''
 
     # Read from the file or initialize an empty dataframe
-    filename = f"exercise_samples.csv"
-    columns = ['user_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
+    filename = "exercise_samples.csv"
+    columns = ['subject_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
     if os.path.isfile(filename):
         sampledata = pd.read_csv(filename)[columns]
     else:
@@ -263,7 +263,7 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
 
     # Drop any data for this exercise
     condition = sampledata['exercise-start-time'] == exercise_start_time
-    condition = condition & sampledata['user_id'] == user_id
+    condition = condition & sampledata['subject_id'] == subject_id
     rows = sampledata[condition].index
     sampledata.drop(rows, inplace=True)
 
@@ -282,7 +282,7 @@ def pull_exercise_samples(token, user_id, url, exercise_start_time):
         sample_list = sample['data'].split(',')
         for i, sample_line in enumerate(sample_list):
             pruned = {
-                       'user_id': user_id,
+                       'subject_id': subject_id,
                        'exercise-start-time': exercise_start_time,
                        'sample-index': i,
                        'recording-rate': sample['recording-rate'],
@@ -332,7 +332,7 @@ def fetch_data(token, url):
     return r.json()
 
 
-def pull_steps(token, user_id, url, date):
+def pull_steps(token, user_id, subject_id, url, date):
     ''' Fetch step data from a given activity and write
     them to the step log. If step data for the day already
     exists, overwrite.
@@ -353,14 +353,14 @@ def pull_steps(token, user_id, url, date):
     samples = r['samples']
     for s in samples:
         s['date'] = date
-        s['user_id'] = user_id
+        s['subject_id'] = subject_id
 
     # Remove any that do not have the steps-column
     samples = [s for s in samples if 'steps' in s]
 
     # Read from the file or initialize an empty dataframe
-    filename = f"activity_steps.csv"
-    columns = ["user_id", "date", "time", "steps"]
+    filename = "activity_steps.csv"
+    columns = ["subject_id", "date", "time", "steps"]
     if os.path.isfile(filename):
         stepdata = pd.read_csv(filename)[columns]
     else:
@@ -370,7 +370,7 @@ def pull_steps(token, user_id, url, date):
     # remove all data for this date and add the newly read data
     # instead
     condition = stepdata['date'] == date
-    condition = condition & stepdata['user_id'] == user_id
+    condition = condition & stepdata['subject_id'] == subject_id
     rows = stepdata[condition].index
     stepdata.drop(rows, inplace=True)
 
@@ -379,7 +379,7 @@ def pull_steps(token, user_id, url, date):
     stepdata.to_csv(filename)
 
 
-def pull_zones(token, user_id, url, date):
+def pull_zones(token, user_id, subject_id, url, date):
     ''' Fetch heart rate zone data from a given activity and
     write them to the heart rate zone log. If heart rate zone
     data for the day already exists, overwrite.
@@ -403,7 +403,8 @@ def pull_zones(token, user_id, url, date):
             for zone in rs['activity-zones']:
                 duration = extract_time(zone['inzone'])
 
-                s = {'user_id': user_id, 'date': date,
+                s = {'subject_id': subject_id,
+                     'date': date,
                      'time': rs['time'],
                      'zone index': zone['index'],
                      'zone name': zone_names[zone['index']],
@@ -411,8 +412,8 @@ def pull_zones(token, user_id, url, date):
                 samples.append(s)
 
     # Read from the file or initialize an empty dataframe
-    filename = f"activity_zones.csv"
-    columns = ["user_id", "date", "time", "index", "duration"]
+    filename = "activity_zones.csv"
+    columns = ["subject_id", "date", "time", "index", "duration"]
     if os.path.isfile(filename):
         zonedata = pd.read_csv(filename)[columns]
     else:
@@ -423,7 +424,7 @@ def pull_zones(token, user_id, url, date):
     # instead
     index = date
     condition = zonedata['date'] == index
-    condition = condition & zonedata['user_id'] == user_id
+    condition = condition & zonedata['subject_id'] == subject_id
     rows = zonedata[condition].index
     zonedata.drop(rows, inplace=True)
 
@@ -469,7 +470,7 @@ def time_to_sec(time_string):
     return time_delta.total_seconds()
 
 
-def pull_activities(token, user_id):
+def pull_activities(token, user_id, subject_id):
     ''' Pull activity date for a given user and write to csv files.
 
     token : The oauth2 authorization token of the user
@@ -478,7 +479,7 @@ def pull_activities(token, user_id):
 
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
-    filename = f"activity_summary.csv"
+    filename = "activity_summary.csv"
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
@@ -532,12 +533,12 @@ def pull_activities(token, user_id):
         summary = summary_info['summary']
         pruned_data = prune_data(summary, activity_columns)
         pruned_data['duration'] = extract_time(pruned_data['duration'])
-        pruned_data['user_id'] = user_id
+        pruned_data['subject_id'] = subject_id
 
         # Remove any previous entry with the same date
         index = pruned_data['date']
         condition = summaries['date'] == index
-        condition = condition & summaries['user_id'] == user_id
+        condition = condition & summaries['subject_id'] == subject_id
         rows = summaries[condition].index
         summaries.drop(rows, inplace=True)
 
@@ -545,15 +546,15 @@ def pull_activities(token, user_id):
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         # Get step and zone data for the summary
-        pull_steps(token, user_id, summary_info['url'], summary['date'])
-        pull_zones(token, user_id, summary_info['url'], summary['date'])
+        pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
+        pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
     summaries.to_csv(filename)
 
 
-def pull_exercises(token, user_id):
+def pull_exercises(token, user_id, subject_id):
     ''' Pull exercise data for a given user and write to csv files.
 
     token : The oauth2 authorization token of the user
@@ -561,7 +562,7 @@ def pull_exercises(token, user_id):
     '''
 
     # Set filename
-    filename = f"exercise_summary.csv"
+    filename = "exercise_summary.csv"
 
     # Fetch data from the API
     transaction = exercise_transaction(token, user_id)
@@ -589,14 +590,14 @@ def pull_exercises(token, user_id):
         # collapse the heart rate hierarchy
         summary["average-heart-rate"] = summary["heart-rate"]["average"]
         summary["maximum-heart-rate"] = summary["heart-rate"]["maximum"]
-        summary['user_id'] = user_id
+        summary['subject_id'] = subject_id
 
         # Add to the dataframe
         pruned_data = prune_data(summary, exercise_columns)
         pruned_data['duration'] = extract_time(pruned_data['duration'])
         summaries = summaries.append(pruned_data, ignore_index=True)
 
-        pull_exercise_samples(token, user_id, url, pruned_data['start-time'])
+        pull_exercise_samples(token, user_id, subject_id, url, pruned_data['start-time'])
 
     # Commit the transaction
     commit_exercise(token, user_id, transaction)
@@ -605,7 +606,7 @@ def pull_exercises(token, user_id):
     summaries.to_csv(filename)
 
 
-def pull_sleep(token, user_id):
+def pull_sleep(token, user_id, subject_id):
     ''' Pull sleep data for a given user and write to csv files.
 
     token : The oauth2 authorization token of the user
@@ -613,7 +614,7 @@ def pull_sleep(token, user_id):
     '''
 
     # Set filename
-    filename = f"sleep_summary.csv"
+    filename = "sleep_summary.csv"
 
     # Load old data first
     if os.path.isfile(filename):
@@ -629,13 +630,13 @@ def pull_sleep(token, user_id):
     for summary in summary_list:
         # Take only the given set of columns
         pruned_data = prune_data(summary, sleep_columns)
-        pruned_data['user_id'] = user_id
+        pruned_data['subject_id'] = subject_id
 
         # Sleep reports don't change once generated. If the date is
         # already found, just skip
         index = pruned_data['date']
         condition = summaries['date'] == index
-        condition = condition & summaries['user_id'] == user_id
+        condition = condition & summaries['subject_id'] == subject_id
         rows = summaries[condition].index
         summaries.drop(rows, inplace=True)
         summaries = summaries.append(pruned_data, ignore_index=True)
@@ -644,21 +645,21 @@ def pull_sleep(token, user_id):
     summaries.to_csv(filename)
 
 
-def pull_subject_data(token, user_id):
+def pull_subject_data(token, user_id, subject_id):
     ''' Pull subject activity, exercise and sleep data and write
     to csv files.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
     '''
-    pull_activities(token, user_id)
-    pull_exercises(token, user_id)
-    pull_sleep(token, user_id)
+    pull_activities(token, user_id, subject_id)
+    pull_exercises(token, user_id, subject_id)
+    pull_sleep(token, user_id, subject_id)
 
 
 # If run as a script, read the token file and pull all data
 if __name__ == "__main__":
     token_file = open("tokens", "r")
     for line in token_file:
-        token, user = line.split(' ')
-        pull_subject_data(token, int(user))
+        token, user, subject_id = line.split(' ')
+        pull_subject_data(token, int(user), subject_id)
