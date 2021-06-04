@@ -280,8 +280,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
         sample = requests.get(sample_url, headers=headers)
         sample = sample.json()
         sample_list = sample['data'].split(',')
-        for i, sample_line in enumerate(sample_list):
-            pruned = {
+        samples = [{
                        'subject_id': subject_id,
                        'exercise-start-time': exercise_start_time,
                        'sample-index': i,
@@ -289,8 +288,8 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
                        'sample-type': sample['sample-type'],
                        'sample-name': sample_names[sample['sample-type']],
                        'sample': sample_line
-                     }
-            sampledata = sampledata.append(pruned, ignore_index=True)
+                   } for i, sample_line in enumerate(sample_list)]
+        sampledata = sampledata.append(samples, ignore_index=True)
 
     # write to file
     sampledata.to_csv(filename)
