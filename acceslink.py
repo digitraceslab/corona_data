@@ -662,4 +662,4 @@ if __name__ == "__main__":
     token_file = open("tokens", "r")
     for line in token_file:
         token, user, subject_id = line.split(' ')
-        pull_subject_data(token, int(user), subject_id)
+        pull_subject_data(token, int(user), int(subject_id))
