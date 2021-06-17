@@ -782,6 +782,6 @@ if __name__ == "__main__":
     for line in token_file:
         token, user, subject_id = line.split(' ')
         try:
-            pull_subject_data(token, int(user), subject_id)
+            pull_subject_data(token, int(user), int(subject_id))
         except requests.exceptions.HTTPError:
             print(f"HTTP-error for {int(subject_id)}, could be revoked")
