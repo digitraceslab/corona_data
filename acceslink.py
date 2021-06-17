@@ -704,8 +704,6 @@ def handle_sleep_sample(subject_id, date, data, type):
     rows = sampledata[condition].index
     sampledata.drop(rows, inplace=True)
 
-    print(data)
-
     samples = [{
                 'subject_id': subject_id,
                 'date': date,
