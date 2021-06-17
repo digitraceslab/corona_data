@@ -35,7 +35,6 @@ def register(token):
         print("Service Unavailable", token)
         return False
 
-
     return True
 
 

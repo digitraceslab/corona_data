@@ -12,6 +12,7 @@ from datetime import datetime
 activity_columns = ["subject_id", "date", "calories", "active-calories", "duration", "active-steps"]
 exercise_columns = ["subject_id", "start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
 sleep_columns = ["subject_id", "date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
+recharge_columns = ["subject_id", 'date', 'heart_rate_avg', 'beat_to_beat_avg', 'heart_rate_variability_avg', 'breathing_rate_avg', 'nightly_recharge_status', 'ans_charge', 'ans_charge_status']
 
 # Descriptive names for heart rate zones
 zone_names = ['sleep', 'sedentary', 'light', 'moderate', 'vigorous', 'not worn']
@@ -201,7 +202,7 @@ def exercise_list(token, user_id, transaction):
 
 
 def sleep_list(token):
-    ''' Fetch a list of exercise urls
+    ''' Fetch a list of sleep summaries
 
     token : The oauth2 authorization token of the user
 
@@ -219,6 +220,27 @@ def sleep_list(token):
 
     r = r.json()
     return r['nights']
+
+
+def recharge_list(token):
+    ''' Fetch a list of sleep recharge summaries
+
+    token : The oauth2 authorization token of the user
+
+    return : List of sleep recharge summaries
+    '''
+
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    url = api_url + '/nightly-recharge'
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+    r = r.json()
+
+    return r['recharges']
 
 
 def activity_summary(token, user_id, url):
@@ -304,6 +326,15 @@ def exercise_summary(token, user_id, url):
 
     return : summary dictionary
     '''
+
+    # Fetching location information is possible with this snippet:
+    #headers = {
+    #    'Accept': 'application/gpx+xml',
+    #    'Authorization': f'Bearer {token}'
+    #}
+    #r = requests.get(url+'/gpx', headers=headers)
+    #with open('test.gpx', 'wb') as file:
+    #    file.write(r.content)
 
     headers = {
         'Accept': 'application/json',
@@ -627,6 +658,11 @@ def pull_sleep(token, user_id, subject_id):
     # Now check for new
     summary_list = sleep_list(token)
     for summary in summary_list:
+        if 'heart_rate_samples' in summary:
+            handle_sleep_sample(subject_id, summary['date'], summary['heart_rate_samples'], type)
+        if 'hypnogram' in summary:
+            handle_sleep_sample(subject_id, summary['date'], summary['hypnogram'], type)
+
         # Take only the given set of columns
         pruned_data = prune_data(summary, sleep_columns)
         pruned_data['subject_id'] = subject_id
@@ -644,6 +680,91 @@ def pull_sleep(token, user_id, subject_id):
     summaries.to_csv(filename)
 
 
+def handle_sleep_sample(subject_id, date, data, type):
+    ''' Append sleep samples to file.
+
+    user_id : The polar user ID of the user
+    date : The date of the sleep record (unique identifier)
+    data : The samples
+    type : Name of the sample type
+    '''
+
+    # Read from the file or initialize an empty dataframe
+    filename = "sleep_samples.csv"
+    columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
+    if os.path.isfile(filename):
+        sampledata = pd.read_csv(filename)[columns]
+    else:
+        sampledata = pd.DataFrame(columns=columns)
+
+    # Drop any data matching this sample
+    condition = sampledata['date'] == date
+    condition = condition & sampledata['subject_id'] == subject_id
+    condition = condition & sampledata['sample-type'] == type
+    rows = sampledata[condition].index
+    sampledata.drop(rows, inplace=True)
+
+    print(data)
+
+    samples = [{
+                'subject_id': subject_id,
+                'date': date,
+                'sample-time': time,
+                'sample-type': type,
+                'sample': sample
+               } for time, sample in data.items]
+    sampledata = sampledata.append(samples, ignore_index=True)
+
+    # write to file
+    sampledata.to_csv(filename)
+
+
+def pull_nightly_recharge(token, user_id, subject_id):
+    ''' Pull nightly recharge data for a given user and write to csv files.
+
+    token : The oauth2 authorization token of the user
+    user_id : The polar user ID of the user
+    '''
+
+    # Set filename
+    filename = "nightly_recharge_summary.csv"
+
+    # Load old data first
+    if os.path.isfile(filename):
+        # The file already exists, so read current entries
+        summaries = pd.read_csv(filename)[recharge_columns]
+    else:
+        # First time pulling for this subject. Create a
+        # dataframe.
+        summaries = pd.DataFrame(columns=recharge_columns)
+
+    # Now check for new
+    summary_list = recharge_list(token)
+    for summary in summary_list:
+        # Extract the hrv and breathing rate samples
+        if 'hrv_samples' in summary:
+            handle_sleep_sample(subject_id, summary['date'], summary['hrv_samples'], type)
+        if 'breathing_samples' in summary:
+            handle_sleep_sample(subject_id, summary['date'], summary['breathing_samples'], type)
+
+        # Take only the given set of columns
+        pruned_data = prune_data(summary, recharge_columns)
+        pruned_data['subject_id'] = subject_id
+
+        # Recharge reports don't change once generated. If the date is
+        # already found, just skip
+        index = pruned_data['date']
+        condition = summaries['date'] == index
+        condition = condition & summaries['subject_id'] == subject_id
+        rows = summaries[condition].index
+        summaries.drop(rows, inplace=True)
+
+        summaries = summaries.append(pruned_data, ignore_index=True)
+
+    # Write to the file
+    summaries.to_csv(filename)
+
+
 def pull_subject_data(token, user_id, subject_id):
     ''' Pull subject activity, exercise and sleep data and write
     to csv files.
@@ -654,6 +775,7 @@ def pull_subject_data(token, user_id, subject_id):
     pull_activities(token, user_id, subject_id)
     pull_exercises(token, user_id, subject_id)
     pull_sleep(token, user_id, subject_id)
+    pull_nightly_recharge(token, user_id, subject_id)
 
 
 # If run as a script, read the token file and pull all data
@@ -661,4 +783,7 @@ if __name__ == "__main__":
     token_file = open("tokens", "r")
     for line in token_file:
         token, user, subject_id = line.split(' ')
-        pull_subject_data(token, int(user), int(subject_id))
+        try:
+            pull_subject_data(token, int(user), subject_id)
+        except requests.exceptions.HTTPError:
+            print(f"HTTP-error for {int(subject_id)}, could be revoked")
