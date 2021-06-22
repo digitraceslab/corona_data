@@ -117,7 +117,7 @@ def activities_transaction(token, user_id):
     r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
-        print("No activity data")
+        # print("No activity data")
         return None
 
     r.raise_for_status()
@@ -145,7 +145,7 @@ def exercise_transaction(token, user_id):
     r = requests.post(url, headers = headers)
 
     if r.status_code == 204:
-        print("No exercise data")
+        #print("No exercise data")
         return None
 
     r.raise_for_status()
