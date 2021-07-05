@@ -298,6 +298,9 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     r = requests.get(url+'/samples', headers=headers)
     r.raise_for_status()
 
+    if r.status_code == 204:
+        return None
+    
     for sample_url in r.json()['samples']:
         sample = requests.get(sample_url, headers=headers)
         sample = sample.json()
@@ -618,8 +621,11 @@ def pull_exercises(token, user_id, subject_id):
         summary = exercise_summary(token, user_id, url)
 
         # collapse the heart rate hierarchy
-        summary["average-heart-rate"] = summary["heart-rate"]["average"]
-        summary["maximum-heart-rate"] = summary["heart-rate"]["maximum"]
+        try:
+          summary["average-heart-rate"] = summary["heart-rate"]["average"]
+          summary["maximum-heart-rate"] = summary["heart-rate"]["maximum"]
+        except:
+          pass
         summary['subject_id'] = subject_id
 
         # Add to the dataframe
@@ -785,3 +791,6 @@ if __name__ == "__main__":
             pull_subject_data(token, int(user), int(subject_id))
         except requests.exceptions.HTTPError:
             print(f"HTTP-error for {int(subject_id)}, could be revoked")
+        except Exception as e:
+            print(e)
+            print("above error encountered for {int(subject_id)}. Moving on.")
