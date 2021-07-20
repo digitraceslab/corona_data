@@ -3,6 +3,7 @@ import requests
 import uuid
 import pandas as pd
 from datetime import datetime
+import time
 
 # Settings
 # ========
@@ -88,11 +89,14 @@ def register(token):
     headers = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
     json = {"member-id": uuid.uuid4().hex}
 
     r = requests.post(api_url, json=json, headers = headers)
+
+    time.sleep(1)
 
     if r.status_code == 409:
         print("User already registered")
@@ -110,11 +114,14 @@ def activities_transaction(token, user_id):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url+f'/{user_id}/activity-transactions'
     r = requests.post(url, headers = headers)
+
+    time.sleep(1)
 
     if r.status_code == 204:
         # print("No activity data")
@@ -138,11 +145,14 @@ def exercise_transaction(token, user_id):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url + f'/{user_id}/exercise-transactions'
     r = requests.post(url, headers = headers)
+
+    time.sleep(1)
 
     if r.status_code == 204:
         #print("No exercise data")
@@ -167,12 +177,15 @@ def activity_list(token, user_id, transaction):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url + f'/{user_id}/activity-transactions/{transaction}'
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
     r = r.json()
     return r['activity-log']
@@ -190,12 +203,15 @@ def exercise_list(token, user_id, transaction):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url + f'/{user_id}/exercise-transactions/{transaction}'
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
     r = r.json()
     return r['exercises']
@@ -211,12 +227,15 @@ def sleep_list(token):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url + '/sleep'
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
     r = r.json()
     return r['nights']
@@ -232,13 +251,16 @@ def recharge_list(token):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url + '/nightly-recharge'
     r = requests.get(url, headers=headers)
     r.raise_for_status()
     r = r.json()
+
+    time.sleep(1)
 
     return r['recharges']
 
@@ -255,11 +277,14 @@ def activity_summary(token, user_id, url):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
     summary = r.json()
     return summary
@@ -279,7 +304,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     filename = "exercise_samples.csv"
     columns = ['subject_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
     if os.path.isfile(filename):
-        sampledata = pd.read_csv(filename)[columns]
+        sampledata = pd.read_csv(filename, low_memory=False)[columns]
     else:
         sampledata = pd.DataFrame(columns=columns)
 
@@ -292,17 +317,22 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     # fetch the samples
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     r = requests.get(url+'/samples', headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
     if r.status_code == 204:
         return None
     
     for sample_url in r.json()['samples']:
         sample = requests.get(sample_url, headers=headers)
+
+        time.sleep(1)
         sample = sample.json()
         sample_list = sample['data'].split(',')
         samples = [{
@@ -341,10 +371,14 @@ def exercise_summary(token, user_id, url):
 
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     r = requests.get(url, headers=headers)
+
+    time.sleep(1)
+
     r.raise_for_status()
 
     summary = r.json()
@@ -355,13 +389,16 @@ def fetch_data(token, url):
     ''' Fetch data from a given url using token authentication '''
     headers = {
         'Accept': 'application/json',
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     r = requests.get(url, headers=headers)
     r.raise_for_status()
     if r.status_code == 204:
         return None
+
+    time.sleep(1)
     return r.json()
 
 
@@ -395,7 +432,7 @@ def pull_steps(token, user_id, subject_id, url, date):
     filename = "activity_steps.csv"
     columns = ["subject_id", "date", "time", "steps"]
     if os.path.isfile(filename):
-        stepdata = pd.read_csv(filename)[columns]
+        stepdata = pd.read_csv(filename, low_memory=False)[columns]
     else:
         stepdata = pd.DataFrame(columns=columns)
 
@@ -448,7 +485,7 @@ def pull_zones(token, user_id, subject_id, url, date):
     filename = "activity_zones.csv"
     columns = ["subject_id", "date", "time", "index", "duration"]
     if os.path.isfile(filename):
-        zonedata = pd.read_csv(filename)[columns]
+        zonedata = pd.read_csv(filename, low_memory=False)[columns]
     else:
         zonedata = pd.DataFrame(columns=columns)
 
@@ -470,24 +507,30 @@ def commit_activity(token, user_id, transaction):
     ''' Commit an activity transaction '''
 
     headers = {
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url+f'/{user_id}/activity-transactions/{transaction}'
     r = requests.put(url, headers=headers)
     r.raise_for_status()
 
+    time.sleep(1)
+
 
 def commit_exercise(token, user_id, transaction):
     ''' Commit an exercise transaction '''
 
     headers = {
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
     }
 
     url = api_url+f'/{user_id}/exercise-transactions/{transaction}'
     r = requests.put(url, headers=headers)
     r.raise_for_status()
+
+    time.sleep(1)
 
 
 def time_to_sec(time_string):
@@ -524,7 +567,7 @@ def pull_activities(token, user_id, subject_id):
     # Found new data. Check for old data first
     if os.path.isfile(filename):
         # The file already exists, so read current entries
-        summaries = pd.read_csv(filename)[activity_columns]
+        summaries = pd.read_csv(filename, low_memory=False)[activity_columns]
 
     else:
         # First time pulling for this subject. Create a
@@ -607,7 +650,7 @@ def pull_exercises(token, user_id, subject_id):
     # Found new data. Check for old data first
     if os.path.isfile(filename):
         # The file already exists, so read current entries
-        summaries = pd.read_csv(filename)[exercise_columns]
+        summaries = pd.read_csv(filename, low_memory=False)[exercise_columns]
     else:
         # First time pulling for this subject. Create a
         # dataframe.
@@ -655,7 +698,7 @@ def pull_sleep(token, user_id, subject_id):
     # Load old data first
     if os.path.isfile(filename):
         # The file already exists, so read current entries
-        summaries = pd.read_csv(filename)[sleep_columns]
+        summaries = pd.read_csv(filename, low_memory=False)[sleep_columns]
     else:
         # First time pulling for this subject. Create a
         # dataframe.
@@ -699,7 +742,7 @@ def handle_sleep_sample(subject_id, date, data, type):
     filename = "sleep_samples.csv"
     columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
     if os.path.isfile(filename):
-        sampledata = pd.read_csv(filename)[columns]
+        sampledata = pd.read_csv(filename, low_memory=False)[columns]
     else:
         sampledata = pd.DataFrame(columns=columns)
 
@@ -736,7 +779,7 @@ def pull_nightly_recharge(token, user_id, subject_id):
     # Load old data first
     if os.path.isfile(filename):
         # The file already exists, so read current entries
-        summaries = pd.read_csv(filename)[recharge_columns]
+        summaries = pd.read_csv(filename, low_memory=False)[recharge_columns]
     else:
         # First time pulling for this subject. Create a
         # dataframe.
@@ -787,10 +830,13 @@ if __name__ == "__main__":
     token_file = open("tokens", "r")
     for line in token_file:
         token, user, subject_id = line.split(' ')
+        print(subject_id)
         try:
             pull_subject_data(token, int(user), int(subject_id))
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as e:
+            print(e)
             print(f"HTTP-error for {int(subject_id)}, could be revoked")
         except Exception as e:
             print(e)
-            print("above error encountered for {int(subject_id)}. Moving on.")
+            print(f"above error encountered for {int(subject_id)}. Moving on.")
+
