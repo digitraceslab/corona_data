@@ -181,7 +181,7 @@ def activity_list(token, user_id, transaction):
 
     if r.status_code == 204:
         return []
-    
+
     r = r.json()
     return r['activity-log']
 
@@ -235,7 +235,7 @@ def sleep_list(token):
 
     if r.status_code == 204:
         return []
-    
+
     r = r.json()
     return r['nights']
 
@@ -261,7 +261,7 @@ def recharge_list(token):
     if r.status_code == 204:
         return []
     r = r.json()
-    
+
     return r['recharges']
 
 
@@ -298,19 +298,10 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     exercise_start_time : The start time of the exercise (unique identifier)
     '''
 
-    # Read from the file or initialize an empty dataframe
-    filename = f"exercise_samples/exercise_samples_{subject_id}.csv"
+    # Initialize an empty dataframe with appropriate columns for the new data
+    filename = f"exercise_samples.csv"
     columns = ['subject_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
-    if os.path.isfile(filename):
-        sampledata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        sampledata = pd.DataFrame(columns=columns)
-
-    # Drop any data for this exercise
-    condition = sampledata['exercise-start-time'] == exercise_start_time
-    condition = condition & sampledata['subject_id'] == subject_id
-    rows = sampledata[condition].index
-    sampledata.drop(rows, inplace=True)
+    sampledata = pd.DataFrame(columns=columns)
 
     # fetch the samples
     headers = {
@@ -324,7 +315,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
 
     if r.status_code == 204:
         return None
-    
+
     for sample_url in r.json()['samples']:
         sample = requests.get(sample_url, headers=headers)
 
@@ -342,7 +333,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
         sampledata = sampledata.append(samples, ignore_index=True)
 
     # write to file
-    sampledata.to_csv(filename)
+    sampledata.to_csv(filename, mode='a', header=False)
 
 
 def exercise_summary(token, user_id, url):
