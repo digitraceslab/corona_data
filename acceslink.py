@@ -96,8 +96,6 @@ def register(token):
 
     r = requests.post(api_url, json=json, headers = headers)
 
-    time.sleep(1)
-
     if r.status_code == 409:
         print("User already registered")
         return
@@ -120,8 +118,6 @@ def activities_transaction(token, user_id):
 
     url = api_url+f'/{user_id}/activity-transactions'
     r = requests.post(url, headers = headers)
-
-    time.sleep(1)
 
     if r.status_code == 204:
         # print("No activity data")
@@ -151,8 +147,6 @@ def exercise_transaction(token, user_id):
 
     url = api_url + f'/{user_id}/exercise-transactions'
     r = requests.post(url, headers = headers)
-
-    time.sleep(1)
 
     if r.status_code == 204:
         #print("No exercise data")
@@ -185,8 +179,9 @@ def activity_list(token, user_id, transaction):
     r = requests.get(url, headers=headers)
     r.raise_for_status()
 
-    time.sleep(1)
-
+    if r.status_code == 204:
+        return []
+    
     r = r.json()
     return r['activity-log']
 
@@ -200,6 +195,7 @@ def exercise_list(token, user_id, transaction):
 
     return : List of urls for fetching exercise data
     '''
+    print("getting list of exercises")
 
     headers = {
         'Accept': 'application/json',
@@ -211,9 +207,11 @@ def exercise_list(token, user_id, transaction):
     r = requests.get(url, headers=headers)
     r.raise_for_status()
 
-    time.sleep(1)
+    if r.status_code == 204:
+        return []
 
     r = r.json()
+    print(f"found {len(r['exercises'])}")
     return r['exercises']
 
 
@@ -235,8 +233,9 @@ def sleep_list(token):
     r = requests.get(url, headers=headers)
     r.raise_for_status()
 
-    time.sleep(1)
-
+    if r.status_code == 204:
+        return []
+    
     r = r.json()
     return r['nights']
 
@@ -258,10 +257,11 @@ def recharge_list(token):
     url = api_url + '/nightly-recharge'
     r = requests.get(url, headers=headers)
     r.raise_for_status()
+
+    if r.status_code == 204:
+        return []
     r = r.json()
-
-    time.sleep(1)
-
+    
     return r['recharges']
 
 
@@ -283,8 +283,6 @@ def activity_summary(token, user_id, url):
 
     r = requests.get(url, headers=headers)
     r.raise_for_status()
-
-    time.sleep(1)
 
     summary = r.json()
     return summary
@@ -324,15 +322,12 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     r = requests.get(url+'/samples', headers=headers)
     r.raise_for_status()
 
-    time.sleep(1)
-
     if r.status_code == 204:
         return None
     
     for sample_url in r.json()['samples']:
         sample = requests.get(sample_url, headers=headers)
 
-        time.sleep(1)
         sample = sample.json()
         sample_list = sample['data'].split(',')
         samples = [{
@@ -377,8 +372,6 @@ def exercise_summary(token, user_id, url):
 
     r = requests.get(url, headers=headers)
 
-    time.sleep(1)
-
     r.raise_for_status()
 
     summary = r.json()
@@ -398,7 +391,6 @@ def fetch_data(token, url):
     if r.status_code == 204:
         return None
 
-    time.sleep(1)
     return r.json()
 
 
@@ -515,8 +507,6 @@ def commit_activity(token, user_id, transaction):
     r = requests.put(url, headers=headers)
     r.raise_for_status()
 
-    time.sleep(1)
-
 
 def commit_exercise(token, user_id, transaction):
     ''' Commit an exercise transaction '''
@@ -529,8 +519,6 @@ def commit_exercise(token, user_id, transaction):
     url = api_url+f'/{user_id}/exercise-transactions/{transaction}'
     r = requests.put(url, headers=headers)
     r.raise_for_status()
-
-    time.sleep(1)
 
 
 def time_to_sec(time_string):
@@ -661,6 +649,7 @@ def pull_exercises(token, user_id, subject_id):
     for url in url_list:
         # Get the summary and specifically note the start-time.
         # There is only one final entry for each start-time.
+        print("pulling exercie")
         summary = exercise_summary(token, user_id, url)
 
         # collapse the heart rate hierarchy
@@ -676,6 +665,7 @@ def pull_exercises(token, user_id, subject_id):
         pruned_data['duration'] = extract_time(pruned_data['duration'])
         summaries = summaries.append(pruned_data, ignore_index=True)
 
+        print("pulling sample")
         pull_exercise_samples(token, user_id, subject_id, url, pruned_data['start-time'])
 
     # Commit the transaction
@@ -812,6 +802,22 @@ def pull_nightly_recharge(token, user_id, subject_id):
     summaries.to_csv(filename)
 
 
+def try_and_report(try_function, token, user_id, subject_id):
+    ''' Try running an acceslink function. If it fails, report the error and retry after
+        20 seconds. Wait up to (about) 15 minutes, in case the problem is the rate limit.
+    '''
+    print(try_function.__name__)
+    for retry in range(50):
+        try:
+            try_function(token, user_id, subject_id)
+        except Exception as e:
+            print("Encountered error:", e)
+            # if failed, run the next iteration (retry)
+            time.sleep(20)
+            continue
+        # if succesfull, break from the loop
+        break
+
 def pull_subject_data(token, user_id, subject_id):
     ''' Pull subject activity, exercise and sleep data and write
     to csv files.
@@ -819,10 +825,10 @@ def pull_subject_data(token, user_id, subject_id):
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
     '''
-    pull_activities(token, user_id, subject_id)
-    pull_exercises(token, user_id, subject_id)
-    pull_sleep(token, user_id, subject_id)
-    pull_nightly_recharge(token, user_id, subject_id)
+    try_and_report(pull_activities, token, user_id, subject_id)
+    try_and_report(pull_exercises, token, user_id, subject_id)
+    try_and_report(pull_sleep, token, user_id, subject_id)
+    try_and_report(pull_nightly_recharge, token, user_id, subject_id)
 
 
 # If run as a script, read the token file and pull all data
@@ -830,7 +836,6 @@ if __name__ == "__main__":
     token_file = open("tokens", "r")
     for line in token_file:
         token, user, subject_id = line.split(' ')
-        print(subject_id)
         try:
             pull_subject_data(token, int(user), int(subject_id))
         except requests.exceptions.HTTPError as e:
