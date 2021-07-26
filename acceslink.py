@@ -299,7 +299,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     '''
 
     # Read from the file or initialize an empty dataframe
-    filename = "exercise_samples.csv"
+    filename = f"exercise_samples/exercise_samples_{subject_id}.csv"
     columns = ['subject_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
     if os.path.isfile(filename):
         sampledata = pd.read_csv(filename, low_memory=False)[columns]
