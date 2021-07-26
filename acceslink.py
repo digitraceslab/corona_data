@@ -79,6 +79,23 @@ def prune_data(data, columns):
     return {key: data[key] for key in columns}
 
 
+def retry_and_report(try_function, *args):
+    ''' Try running an acceslink function. If it fails, report the error and retry after
+        20 seconds. Wait up to (about) 15 minutes, in case the problem is the rate limit.
+    '''
+    print(try_function.__name__)
+    for retry in range(50):
+        try:
+            try_function(*args)
+        except Exception as e:
+            print("Encountered error:", e)
+            # if failed, run the next iteration (retry)
+            time.sleep(20)
+            continue
+        # if succesfull, break from the loop
+        break
+
+
 def register(token):
     ''' Register a new user
 
@@ -657,6 +674,7 @@ def pull_exercises(token, user_id, subject_id):
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         print("pulling sample")
+
         pull_exercise_samples(token, user_id, subject_id, url, pruned_data['start-time'])
 
     # Commit the transaction
@@ -689,9 +707,9 @@ def pull_sleep(token, user_id, subject_id):
     summary_list = sleep_list(token)
     for summary in summary_list:
         if 'heart_rate_samples' in summary:
-            handle_sleep_sample(subject_id, summary['date'], summary['heart_rate_samples'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], type)
         if 'hypnogram' in summary:
-            handle_sleep_sample(subject_id, summary['date'], summary['hypnogram'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], type)
 
         # Take only the given set of columns
         pruned_data = prune_data(summary, sleep_columns)
@@ -771,9 +789,9 @@ def pull_nightly_recharge(token, user_id, subject_id):
     for summary in summary_list:
         # Extract the hrv and breathing rate samples
         if 'hrv_samples' in summary:
-            handle_sleep_sample(subject_id, summary['date'], summary['hrv_samples'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hrv_samples'], type)
         if 'breathing_samples' in summary:
-            handle_sleep_sample(subject_id, summary['date'], summary['breathing_samples'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['breathing_samples'], type)
 
         # Take only the given set of columns
         pruned_data = prune_data(summary, recharge_columns)
@@ -793,22 +811,6 @@ def pull_nightly_recharge(token, user_id, subject_id):
     summaries.to_csv(filename)
 
 
-def try_and_report(try_function, token, user_id, subject_id):
-    ''' Try running an acceslink function. If it fails, report the error and retry after
-        20 seconds. Wait up to (about) 15 minutes, in case the problem is the rate limit.
-    '''
-    print(try_function.__name__)
-    for retry in range(50):
-        try:
-            try_function(token, user_id, subject_id)
-        except Exception as e:
-            print("Encountered error:", e)
-            # if failed, run the next iteration (retry)
-            time.sleep(20)
-            continue
-        # if succesfull, break from the loop
-        break
-
 def pull_subject_data(token, user_id, subject_id):
     ''' Pull subject activity, exercise and sleep data and write
     to csv files.
@@ -816,10 +818,10 @@ def pull_subject_data(token, user_id, subject_id):
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
     '''
-    try_and_report(pull_activities, token, user_id, subject_id)
-    try_and_report(pull_exercises, token, user_id, subject_id)
-    try_and_report(pull_sleep, token, user_id, subject_id)
-    try_and_report(pull_nightly_recharge, token, user_id, subject_id)
+    retry_and_report(pull_activities, token, user_id, subject_id)
+    retry_and_report(pull_exercises, token, user_id, subject_id)
+    retry_and_report(pull_sleep, token, user_id, subject_id)
+    retry_and_report(pull_nightly_recharge, token, user_id, subject_id)
 
 
 # If run as a script, read the token file and pull all data
