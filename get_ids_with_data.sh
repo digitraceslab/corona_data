@@ -5,5 +5,5 @@ cut -d "," -f2 activity_summary.csv | tail -n+2 | sort | uniq > .get_last_date_u
 # For each ID, find latest date
 # This will output rows with ID and date
 while read id; do
-  grep $id activity_summary.csv | tail -n 1 | cut -d "," -f2,3 activity_summary.csv | tr ',' ' '
+  grep $id activity_summary.csv | tail -n 1 | cut -d "," -f2,3 | tr ',' ' '
 done < .get_last_date_unique
