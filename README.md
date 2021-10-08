@@ -18,5 +18,5 @@ To remove a user, add their user_id (and nothing else) to the `delete_tokens`
 file.
 
 Running the `get_data.sh` script will first register any new tokens, delete
-any new tokens in `delete_tokens`, and finally pull
-latest data from the API and write it to several csv files, and finally
+any new tokens in `delete_tokens`, and finally pull latest data from the API.
+The data is appended to several csv files stored in this directory.
