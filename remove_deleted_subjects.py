@@ -1,10 +1,14 @@
-import os
-import shutil
+# When run as a script, check any user ids in the delete_tokens file and
+# remove authorization from any that are currently in tokens.
+#
+# If the script encounters an error, the user id is recorded in
+# delete_token_errors. The token is also not deleted from the list, so that
+# deletion is attempted again the next time the script is run.
+
 import requests
-import uuid
 
 # URL to the Polar Acceslink API
-api_url = 'https://www.polaraccesslink.com/v3/users'
+from settings import api_url
 
 
 def delete(token, user_id):
@@ -21,8 +25,6 @@ def delete(token, user_id):
     }
 
     r = requests.delete(api_url + '/' + user_id, headers = headers)
-
-    print(r)
 
     if r.status_code == 403:
         print("Access error, forbidden", token)
