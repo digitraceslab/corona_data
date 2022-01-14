@@ -7,3 +7,5 @@ python3 acceslink.py >> logs
 
 echo done at $(date) >> logs
 
+#cp *.csv ~/raw_data/
+
