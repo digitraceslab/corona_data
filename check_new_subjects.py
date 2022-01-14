@@ -27,18 +27,22 @@ def register(token):
     }
     json = {"member-id": uuid.uuid4().hex}
 
-    r = requests.post(api_url, json=json, headers = headers)
+    try:
+        r = requests.post(api_url, json=json, headers = headers)
 
-    if r.status_code == 409:
-        print("User already registered", token)
-        return False
+        if r.status_code == 409:
+            print("User already registered", token)
+            return False
 
-    if r.status_code == 403:
-        print("Access error", token)
-        return False
+        if r.status_code == 403:
+            print("Access error", token)
+            return False
 
-    if r.status_code == 503:
-        print("Service Unavailable", token)
+        if r.status_code == 503:
+            print("Service Unavailable", token)
+            return False
+
+    except:
         return False
 
     return True

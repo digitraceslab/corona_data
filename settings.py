@@ -1,6 +1,7 @@
 # Settings
 # ========
 
+raw_data_folder = "../raw_data/"
 
 # Set columns to keep from activity data, exercise data and
 # sleep data

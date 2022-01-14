@@ -233,7 +233,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     '''
 
     # Initialize an empty dataframe with appropriate columns for the new data
-    filename = f"exercise_samples.csv"
+    filename = raw_data_folder+"exercise_samples.csv"
     columns = ['subject_id', 'exercise-start-time', 'sample-index', 'recording-rate', 'sample-type', 'sample-name', 'sample']
     sampledata = pd.DataFrame(columns=columns)
 
@@ -349,7 +349,7 @@ def pull_steps(token, user_id, subject_id, url, date):
     samples = [s for s in samples if 'steps' in s]
 
     # Read from the file or initialize an empty dataframe
-    filename = "activity_steps.csv"
+    filename = raw_data_folder+"activity_steps.csv"
     columns = ["subject_id", "date", "time", "steps"]
     if os.path.isfile(filename):
         stepdata = pd.read_csv(filename, low_memory=False)[columns]
@@ -402,7 +402,7 @@ def pull_zones(token, user_id, subject_id, url, date):
                 samples.append(s)
 
     # Read from the file or initialize an empty dataframe
-    filename = "activity_zones.csv"
+    filename = raw_data_folder+"activity_zones.csv"
     columns = ["subject_id", "date", "time", "index", "duration"]
     if os.path.isfile(filename):
         zonedata = pd.read_csv(filename, low_memory=False)[columns]
@@ -471,14 +471,14 @@ def pull_activities(token, user_id, subject_id):
 
     # To avoid writing multiple entries for the same day,
     # read the csv file if it exists and get the lastest date
-    filename = "activity_summary.csv"
+    filename = raw_data_folder+"activity_summary.csv"
 
     # Fetch data from the API
     transaction = activities_transaction(token, user_id)
 
     if transaction is None:
         # No new data, nothing to do
-        return
+        return False
 
     # Found new data. Check for old data first
     if os.path.isfile(filename):
@@ -538,12 +538,35 @@ def pull_activities(token, user_id, subject_id):
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         # Get step and zone data for the summary
-        pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
-        pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
+        for retry in range(10):
+          try:
+            pull_steps(token, user_id, subject_id, summary_info['url'], summary['date']
+            return result
+          except Exception as e:
+            print("Encountered error:", e)
+            # if failed, run the next iteration (retry)
+            time.sleep(5)
+            continue
+          # if succesfull, break from the loop
+          break
+
+        for retry in range(10):
+          try:
+            pull_zones(token, user_id, subject_id, summary_info['url'], summary['date']
+            return result
+          except Exception as e:
+            print("Encountered error:", e)
+            # if failed, run the next iteration (retry)
+            time.sleep(5)
+            continue
+          # if succesfull, break from the loop
+          break
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
     summaries.to_csv(filename)
+
+    return True
 
 
 def pull_exercises(token, user_id, subject_id):
@@ -554,7 +577,7 @@ def pull_exercises(token, user_id, subject_id):
     '''
 
     # Set filename
-    filename = "exercise_summary.csv"
+    filename = raw_data_folder+"exercise_summary.csv"
 
     # Fetch data from the API
     transaction = exercise_transaction(token, user_id)
@@ -613,7 +636,7 @@ def pull_sleep(token, user_id, subject_id):
     '''
 
     # Set filename
-    filename = "sleep_summary.csv"
+    filename = raw_data_folder+"sleep_summary.csv"
 
     # Load old data first
     if os.path.isfile(filename):
@@ -659,7 +682,7 @@ def handle_sleep_sample(subject_id, date, data, type):
     '''
 
     # Read from the file or initialize an empty dataframe
-    filename = "sleep_samples.csv"
+    filename = raw_data_folder+"sleep_samples.csv"
     columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
     if os.path.isfile(filename):
         sampledata = pd.read_csv(filename, low_memory=False)[columns]
@@ -694,7 +717,7 @@ def pull_nightly_recharge(token, user_id, subject_id):
     '''
 
     # Set filename
-    filename = "nightly_recharge_summary.csv"
+    filename = raw_data_folder+"nightly_recharge_summary.csv"
 
     # Load old data first
     if os.path.isfile(filename):
@@ -739,10 +762,12 @@ def pull_subject_data(token, user_id, subject_id):
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
     '''
-    utils.retry_and_report(pull_activities, token, user_id, subject_id)
-    utils.retry_and_report(pull_exercises, token, user_id, subject_id)
-    utils.retry_and_report(pull_sleep, token, user_id, subject_id)
-    utils.retry_and_report(pull_nightly_recharge, token, user_id, subject_id)
+    has_data = retry_and_report(pull_activities, token, user_id, subject_id)
+    if has_data:
+      retry_and_report(pull_exercises, token, user_id, subject_id)
+      retry_and_report(pull_sleep, token, user_id, subject_id)
+      retry_and_report(pull_nightly_recharge, token, user_id, subject_id)
+      time.sleep(1)
 
 
 # If run as a script, read the token file and pull all data
@@ -751,7 +776,10 @@ if __name__ == "__main__":
     for line in token_file:
         token, user, subject_id = line.split(' ')
         try:
+            now = datetime.now()
+            print(now.strftime("%H:%M:%S:"), user)
             pull_subject_data(token, int(user), int(subject_id))
+            time.sleep(0.1)
         except requests.exceptions.HTTPError as e:
             print(e)
             print(f"HTTP-error for {int(subject_id)}, could be revoked")
