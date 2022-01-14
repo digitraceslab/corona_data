@@ -623,7 +623,7 @@ def pull_activities(token, user_id, subject_id):
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         # Get step and zone data for the summary
-        for retry in range(50):
+        for retry in range(10):
           try:
             pull_steps(token, user_id, subject_id, summary_info['url'], summary['date']
             return result
@@ -635,7 +635,7 @@ def pull_activities(token, user_id, subject_id):
           # if succesfull, break from the loop
           break
 
-        for retry in range(50):
+        for retry in range(10):
           try:
             pull_zones(token, user_id, subject_id, summary_info['url'], summary['date']
             return result
