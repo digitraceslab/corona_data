@@ -540,8 +540,7 @@ def pull_activities(token, user_id, subject_id):
         # Get step and zone data for the summary
         for retry in range(10):
           try:
-            pull_steps(token, user_id, subject_id, summary_info['url'], summary['date']
-            return result
+            pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
           except Exception as e:
             print("Encountered error:", e)
             # if failed, run the next iteration (retry)
@@ -552,8 +551,7 @@ def pull_activities(token, user_id, subject_id):
 
         for retry in range(10):
           try:
-            pull_zones(token, user_id, subject_id, summary_info['url'], summary['date']
-            return result
+            pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
           except Exception as e:
             print("Encountered error:", e)
             # if failed, run the next iteration (retry)
