@@ -659,7 +659,7 @@ def handle_sleep_sample(subject_id, date, data, type):
     # write to file
     sampledata = pd.DataFrame(columns=columns)
     sampledata = sampledata.append(samples, ignore_index=True)
-    summaries.to_csv(filename, mode='a', header=False)
+    sampledata.to_csv(filename, mode='a', header=False)
 
 
 def pull_nightly_recharge(token, user_id, subject_id):
