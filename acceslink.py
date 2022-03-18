@@ -340,6 +340,11 @@ def pull_steps(token, user_id, subject_id, url, date):
 
     # Add date and subject ID to all the samples
     samples = r['samples']
+
+    if len(samples) == 0:
+        print("Length of samples is 0 in pull_steps")
+        return
+
     for s in samples:
         s['date'] = date
         s['subject_id'] = subject_id
@@ -351,22 +356,11 @@ def pull_steps(token, user_id, subject_id, url, date):
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_steps.csv"
     columns = ["subject_id", "date", "time", "steps"]
-    if os.path.isfile(filename):
-        stepdata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        stepdata = pd.DataFrame(columns=columns)
 
-    # This activity should have all data for the date. So
-    # remove all data for this date and add the newly read data
-    # instead
-    condition = stepdata['date'] == date
-    condition = condition & stepdata['subject_id'] == subject_id
-    rows = stepdata[condition].index
-    stepdata.drop(rows, inplace=True)
-
-    # Append the new data and save
-    stepdata = stepdata.append(samples, ignore_index=True)
-    stepdata.to_csv(filename)
+    # Save the new data
+    stepdata = pd.DataFrame(columns=columns)
+    stepdata = stepdata.append(samples)
+    stepdata.to_csv(filename, mode='a', header=False)
 
 
 def pull_zones(token, user_id, subject_id, url, date):
@@ -401,26 +395,18 @@ def pull_zones(token, user_id, subject_id, url, date):
                      'duration': duration}
                 samples.append(s)
 
+    if len(samples) == 0:
+        print("Length of samples is 0 in pull_zones")
+        return
+
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_zones.csv"
     columns = ["subject_id", "date", "time", "index", "duration"]
-    if os.path.isfile(filename):
-        zonedata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        zonedata = pd.DataFrame(columns=columns)
-
-    # This activity should have all data for the date. So
-    # remove all data for this date and add the newly read data
-    # instead
-    index = date
-    condition = zonedata['date'] == index
-    condition = condition & zonedata['subject_id'] == subject_id
-    rows = zonedata[condition].index
-    zonedata.drop(rows, inplace=True)
 
     # Append the new data and write
+    zonedata = pd.DataFrame(columns=columns)
     zonedata = zonedata.append(samples, ignore_index=True)
-    zonedata.to_csv(filename)
+    zonedata.to_csv(filename, mode='a', header=False)
 
 
 def commit_activity(token, user_id, transaction):
@@ -480,15 +466,7 @@ def pull_activities(token, user_id, subject_id):
         # No new data, nothing to do
         return False
 
-    # Found new data. Check for old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[activity_columns]
-
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe and note there is not previous data.
-        summaries = pd.DataFrame(columns=activity_columns)
+    summaries = pd.DataFrame(columns=activity_columns)
 
     # Get the list of summaries
     url_list = activity_list(token, user_id, transaction)
@@ -527,13 +505,6 @@ def pull_activities(token, user_id, subject_id):
         pruned_data['duration'] = utils.extract_time(pruned_data['duration'])
         pruned_data['subject_id'] = subject_id
 
-        # Remove any previous entry with the same date
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
-
         # Add the summary
         summaries = summaries.append(pruned_data, ignore_index=True)
 
@@ -562,7 +533,7 @@ def pull_activities(token, user_id, subject_id):
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
 
     return True
 
@@ -584,14 +555,7 @@ def pull_exercises(token, user_id, subject_id):
         # No new data, nothing to do
         return
 
-    # Found new data. Check for old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[exercise_columns]
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe.
-        summaries = pd.DataFrame(columns=exercise_columns)
+    summaries = pd.DataFrame(columns=exercise_columns)
 
     # Now check for new
     url_list = exercise_list(token, user_id, transaction)
@@ -623,7 +587,7 @@ def pull_exercises(token, user_id, subject_id):
     commit_exercise(token, user_id, transaction)
 
     # Write to the file
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
 
 
 def pull_sleep(token, user_id, subject_id):
@@ -636,38 +600,35 @@ def pull_sleep(token, user_id, subject_id):
     # Set filename
     filename = raw_data_folder+"sleep_summary.csv"
 
-    # Load old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[sleep_columns]
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe.
-        summaries = pd.DataFrame(columns=sleep_columns)
+    # Find the last date with data for this subject
+    data = pd.read_csv(filename, usecols=["date", "subject_id"])
+    data = data[data["subject_id"] == subject_id]
+    latest_date = max(pd.to_datetime(data['date']))
+
+    summaries = pd.DataFrame(columns=sleep_columns)
 
     # Now check for new
     summary_list = sleep_list(token)
     for summary in summary_list:
-        if 'heart_rate_samples' in summary:
-            utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], type)
-        if 'hypnogram' in summary:
-            utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], type)
-
-        # Take only the given set of columns
-        pruned_data = utils.prune_data(summary, sleep_columns)
-        pruned_data['subject_id'] = subject_id
-
         # Sleep reports don't change once generated. If the date is
         # already found, just skip
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
-        summaries = summaries.append(pruned_data, ignore_index=True)
+        date = datetime.strptime(summary["date"], '%Y-%m-%d')
+        if date >= latest_date:
+
+            if 'heart_rate_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], type)
+
+            if 'hypnogram' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], type)
+
+            # Take only the given set of columns
+            pruned_data = utils.prune_data(summary, sleep_columns)
+            pruned_data['subject_id'] = subject_id
+
+            summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
 
 
 def handle_sleep_sample(subject_id, date, data, type):
@@ -679,20 +640,13 @@ def handle_sleep_sample(subject_id, date, data, type):
     type : Name of the sample type
     '''
 
+    if len(data) == 0:
+        print("handle_sleep_sample called with empty sample")
+        return
+
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"sleep_samples.csv"
     columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
-    if os.path.isfile(filename):
-        sampledata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        sampledata = pd.DataFrame(columns=columns)
-
-    # Drop any data matching this sample
-    condition = sampledata['date'] == date
-    condition = condition & sampledata['subject_id'] == subject_id
-    condition = condition & sampledata['sample-type'] == type
-    rows = sampledata[condition].index
-    sampledata.drop(rows, inplace=True)
 
     samples = [{
                 'subject_id': subject_id,
@@ -701,10 +655,11 @@ def handle_sleep_sample(subject_id, date, data, type):
                 'sample-type': type,
                 'sample': sample
                } for time, sample in data.items]
-    sampledata = sampledata.append(samples, ignore_index=True)
 
     # write to file
-    sampledata.to_csv(filename)
+    sampledata = pd.DataFrame(columns=columns)
+    sampledata = sampledata.append(samples, ignore_index=True)
+    summaries.to_csv(filename, mode='a', header=False)
 
 
 def pull_nightly_recharge(token, user_id, subject_id):
@@ -717,40 +672,32 @@ def pull_nightly_recharge(token, user_id, subject_id):
     # Set filename
     filename = raw_data_folder+"nightly_recharge_summary.csv"
 
-    # Load old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[recharge_columns]
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe.
-        summaries = pd.DataFrame(columns=recharge_columns)
+    # Find the last date with data for this subject
+    data = pd.read_csv(filename, usecols=["date", "subject_id"])
+    data = data[data["subject_id"] == subject_id]
+    latest_date = max(pd.to_datetime(data['date']))
+
+    summaries = pd.DataFrame(columns=recharge_columns)
 
     # Now check for new
     summary_list = recharge_list(token)
     for summary in summary_list:
-        # Extract the hrv and breathing rate samples
-        if 'hrv_samples' in summary:
-            utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hrv_samples'], type)
-        if 'breathing_samples' in summary:
-            utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['breathing_samples'], type)
+        date = datetime.strptime(summary["date"], '%Y-%m-%d')
+        if date >= latest_date:
+            # Extract the hrv and breathing rate samples
+            if 'hrv_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hrv_samples'], type)
+            if 'breathing_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['breathing_samples'], type)
 
-        # Take only the given set of columns
-        pruned_data = utils.prune_data(summary, recharge_columns)
-        pruned_data['subject_id'] = subject_id
+            # Take only the given set of columns
+            pruned_data = utils.prune_data(summary, recharge_columns)
+            pruned_data['subject_id'] = subject_id
 
-        # Recharge reports don't change once generated. If the date is
-        # already found, just skip
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
-
-        summaries = summaries.append(pruned_data, ignore_index=True)
+            summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
 
 
 def pull_subject_data(token, user_id, subject_id):
