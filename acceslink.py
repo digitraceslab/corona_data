@@ -509,27 +509,14 @@ def pull_activities(token, user_id, subject_id):
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         # Get step and zone data for the summary
-        for retry in range(10):
-          try:
-            pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
-          except Exception as e:
-            print("Encountered error:", e)
-            # if failed, run the next iteration (retry)
-            time.sleep(5)
-            continue
-          # if succesfull, break from the loop
-          break
+        try:
+          pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
+          pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
+        except Exception as e:
+          print("Encountered error:", e)
+          # return without committing. The data should be available tomorrow.
+          return False
 
-        for retry in range(10):
-          try:
-            pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
-          except Exception as e:
-            print("Encountered error:", e)
-            # if failed, run the next iteration (retry)
-            time.sleep(5)
-            continue
-          # if succesfull, break from the loop
-          break
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
