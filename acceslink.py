@@ -2,99 +2,10 @@ import os
 import requests
 import uuid
 import pandas as pd
-import time
 from datetime import datetime
 
-raw_data_folder = "../raw_data/"
-
-
-# Settings
-# ========
-#
-# Set columns to keep from activity data, exercise data and
-# sleep data
-activity_columns = ["subject_id", "date", "calories", "active-calories", "duration", "active-steps"]
-exercise_columns = ["subject_id", "start-time", "calories", "distance", "duration", "training-load", "max-heart-rate", "average-heart-rate", "training-load", "sport", "detailed-sport-info", "fat-percentage", "carbohydrate-percentage", "protein-percentage"]
-sleep_columns = ["subject_id", "date", "sleep_start_time", "sleep_end_time", "continuity", "light_sleep", "deep_sleep", "rem_sleep", "unrecognized_sleep_stage", 'total_interruption_duration']
-recharge_columns = ["subject_id", 'date', 'heart_rate_avg', 'beat_to_beat_avg', 'heart_rate_variability_avg', 'breathing_rate_avg', 'nightly_recharge_status', 'ans_charge', 'ans_charge_status']
-
-# Descriptive names for heart rate zones
-zone_names = ['sleep', 'sedentary', 'light', 'moderate', 'vigorous', 'not worn']
-
-# Descriptive names for the sample indices
-sample_names = ['Heart rate (bpm)', 'Speed (km/h)', 'Cadence (rpm)', 'Altitude (m)', 'Power (W)', 'Power pedaling index (%)', 'Power left-right balance (%)', 'Air pressure (hpa)', 'Running cadence (spm)', 'Temperature (C)', 'Distance (m)', 'RR Interval (ms)']
-
-# URL to the Polar Acceslink API
-api_url = 'https://www.polaraccesslink.com/v3/users'
-
-
-def extract_time(time_string):
-    ''' Utility for extracting hours, minutes and seconds
-    from the API time format
-
-    time_string : time value returened by the Acceslink API
-
-    return : time in seconds
-    '''
-
-    t = ''
-    seconds = 0
-    for c in time_string:
-        if c == 'P':
-            # The string starts with PT, which we skip
-            pass
-        elif c == 'T':
-            # The string starts with PT, which we skip
-            pass
-        elif c == 'H':
-            # Hours
-            seconds += 3600*int(t)
-            t = ''
-        elif c == 'M':
-            # Minutes
-            seconds = 60*int(t)
-            t = ''
-        elif c == 'S':
-            # Seconds
-            seconds = float(t)
-            t = ''
-        else:
-            t += c
-
-    return seconds
-
-
-def prune_data(data, columns):
-    ''' Clean data by extracting given set of columns and
-    adding an empty for missing data.
-
-    data : the original data to prune
-    columns : list of keys to keep in the data
-
-    returns : pruned data
-    '''
-    # Add empty strings for missing columns
-    for key in columns:
-        if key not in data:
-            data[key] = ''
-
-    # Construct a dictionary of only the listed columns
-    return {key: data[key] for key in columns}
-
-
-def retry_and_report(try_function, *args):
-    ''' Try running an acceslink function. If it fails, report the error and retry after
-        20 seconds. Wait up to (about) 15 minutes, in case the problem is the rate limit.
-    '''
-    for retry in range(50):
-        try:
-            result = try_function(*args)
-            return result
-        except Exception as e:
-            print("Encountered error:", e)
-            # if failed, run the next iteration (retry)
-            time.sleep(20)
-    return False
+import utils
+from settings import *
 
 
 def register(token):
@@ -154,7 +65,8 @@ def exercise_transaction(token, user_id):
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
 
-    return : True if there is new data
+    return : Returns the transaction ID if there is new data,
+             otherwise None
     '''
 
     headers = {
@@ -178,7 +90,8 @@ def exercise_transaction(token, user_id):
 
 
 def activity_list(token, user_id, transaction):
-    ''' Fetch a list of activity urls
+    ''' Fetch a list of activity urls. These are used for downloading
+    data for each activity record (usually one per day).
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -205,7 +118,8 @@ def activity_list(token, user_id, transaction):
 
 
 def exercise_list(token, user_id, transaction):
-    ''' Fetch a list of exercise urls
+    ''' Fetch a list of exercise urls. These are used to download data recorded
+    for each individual exercise.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -234,7 +148,8 @@ def exercise_list(token, user_id, transaction):
 
 
 def sleep_list(token):
-    ''' Fetch a list of sleep summaries
+    ''' Fetch a list of sleep summaries. These already contain the summary data,
+    not just URLs for fetching.
 
     token : The oauth2 authorization token of the user
 
@@ -259,7 +174,8 @@ def sleep_list(token):
 
 
 def recharge_list(token):
-    ''' Fetch a list of sleep recharge summaries
+    ''' Fetch a list of sleep recharge summaries. These already contain the
+    summary data, not just URLs for fetching.
 
     token : The oauth2 authorization token of the user
 
@@ -284,7 +200,7 @@ def recharge_list(token):
 
 
 def activity_summary(token, user_id, url):
-    ''' Fetch the summary of a given activity
+    ''' Fetch the summary of a given activity.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -308,7 +224,7 @@ def activity_summary(token, user_id, url):
 
 def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     ''' Fetch exercise sample data from a given exercise and
-    write them to the log.
+    write them to the data file.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -331,9 +247,11 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
     r = requests.get(url+'/samples', headers=headers)
     r.raise_for_status()
 
+    # Return None if this exercise does not exist or has no data
     if r.status_code == 204:
         return None
 
+    # Flatten and format the data.
     for sample_url in r.json()['samples']:
         sample = requests.get(sample_url, headers=headers)
 
@@ -355,7 +273,7 @@ def pull_exercise_samples(token, user_id, subject_id, url, exercise_start_time):
 
 
 def exercise_summary(token, user_id, url):
-    ''' Fetch the summary of a given exercise
+    ''' Fetch the summary of a given exercise.
 
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
@@ -364,15 +282,6 @@ def exercise_summary(token, user_id, url):
     return : summary dictionary
     '''
 
-    # Fetching location information is possible with this snippet:
-    #headers = {
-    #    'Accept': 'application/gpx+xml',
-    #    'Authorization': f'Bearer {token}'
-    #}
-    #r = requests.get(url+'/gpx', headers=headers)
-    #with open('test.gpx', 'wb') as file:
-    #    file.write(r.content)
-
     headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {token}',
@@ -381,7 +290,7 @@ def exercise_summary(token, user_id, url):
 
     r = requests.get(url, headers=headers)
 
-    r.raise_for_status()
+    r.raise_for_status()  # Raises common error codes
 
     summary = r.json()
     return summary
@@ -389,17 +298,26 @@ def exercise_summary(token, user_id, url):
 
 def fetch_data(token, url):
     ''' Fetch data from a given url using token authentication '''
+    # Standard headers for Acceslink
     headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {token}',
         'Connection': 'keep-alive'
     }
 
+    # Fetch data if available
     r = requests.get(url, headers=headers)
+
+    # Raise common errors
     r.raise_for_status()
+
+    # Return None if the server returns '204: no data'.
+    # This might indicate that the data is already fetched, or that none
+    # ever existed.
     if r.status_code == 204:
         return None
 
+    # Convert to json and return
     return r.json()
 
 
@@ -420,30 +338,28 @@ def pull_steps(token, user_id, subject_id, url, date):
         print("No step data, is transaction open?")
         return
 
-    # Add date to all the samples
+    # Add date and subject ID to all the samples
     samples = r['samples']
+
+    if len(samples) == 0:
+        print("Length of samples is 0 in pull_steps")
+        return
+
     for s in samples:
         s['date'] = date
         s['subject_id'] = subject_id
 
-    # Remove any that do not have the steps-column
+    # Remove any that do not have the steps-column. These presumably have 0
+    # steps.
     samples = [s for s in samples if 'steps' in s]
 
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_steps.csv"
     columns = ["subject_id", "date", "time", "steps"]
+
+    # Save the new data
     stepdata = pd.DataFrame(columns=columns)
-
-    # This activity should have all data for the date. So
-    # remove all data for this date and add the newly read data
-    # instead
-    condition = stepdata['date'] == date
-    condition = condition & stepdata['subject_id'] == subject_id
-    rows = stepdata[condition].index
-    stepdata.drop(rows, inplace=True)
-
-    # Append the new data and save
-    stepdata = stepdata.append(samples, ignore_index=True)
+    stepdata = stepdata.append(samples)
     stepdata.to_csv(filename, mode='a', header=False)
 
 
@@ -469,7 +385,7 @@ def pull_zones(token, user_id, subject_id, url, date):
     for rs in r['samples']:
         if 'activity-zones' in rs:
             for zone in rs['activity-zones']:
-                duration = extract_time(zone['inzone'])
+                duration = utils.extract_time(zone['inzone'])
 
                 s = {'subject_id': subject_id,
                      'date': date,
@@ -479,21 +395,16 @@ def pull_zones(token, user_id, subject_id, url, date):
                      'duration': duration}
                 samples.append(s)
 
+    if len(samples) == 0:
+        print("Length of samples is 0 in pull_zones")
+        return
+
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_zones.csv"
     columns = ["subject_id", "date", "time", "index", "duration"]
-    zonedata = pd.DataFrame(columns=columns)
-
-    # This activity should have all data for the date. So
-    # remove all data for this date and add the newly read data
-    # instead
-    index = date
-    condition = zonedata['date'] == index
-    condition = condition & zonedata['subject_id'] == subject_id
-    rows = zonedata[condition].index
-    zonedata.drop(rows, inplace=True)
 
     # Append the new data and write
+    zonedata = pd.DataFrame(columns=columns)
     zonedata = zonedata.append(samples, ignore_index=True)
     zonedata.to_csv(filename, mode='a', header=False)
 
@@ -589,23 +500,22 @@ def pull_activities(token, user_id, subject_id):
     for summary_info in summary_list.values():
         # Prune the summary data
         summary = summary_info['summary']
-        pruned_data = prune_data(summary, activity_columns)
-        pruned_data['duration'] = extract_time(pruned_data['duration'])
+        pruned_data = utils.prune_data(summary, activity_columns)
+        pruned_data['duration'] = utils.extract_time(pruned_data['duration'])
         pruned_data['subject_id'] = subject_id
-
-        # Remove any previous entry with the same date
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
 
         # Add the summary
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         # Get step and zone data for the summary
-        pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
-        pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
+        try:
+          pull_steps(token, user_id, subject_id, summary_info['url'], summary['date'])
+          pull_zones(token, user_id, subject_id, summary_info['url'], summary['date'])
+        except Exception as e:
+          print("Encountered error:", e)
+          # return without committing. The data should be available tomorrow.
+          return False
+
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
@@ -631,7 +541,6 @@ def pull_exercises(token, user_id, subject_id):
         # No new data, nothing to do
         return
 
-
     # Now check for new
     summaries = pd.DataFrame(columns=exercise_columns)
     for url in exercise_list(token, user_id, transaction):
@@ -649,8 +558,8 @@ def pull_exercises(token, user_id, subject_id):
         summary['subject_id'] = subject_id
 
         # Add to the dataframe
-        pruned_data = prune_data(summary, exercise_columns)
-        pruned_data['duration'] = extract_time(pruned_data['duration'])
+        pruned_data = utils.prune_data(summary, exercise_columns)
+        pruned_data['duration'] = utils.extract_time(pruned_data['duration'])
         summaries = summaries.append(pruned_data, ignore_index=True)
 
         print("pulling sample")
@@ -734,20 +643,33 @@ def pull_sleep(token, user_id, subject_id):
 
     # Set filename
     filename = raw_data_folder+"sleep_summary.csv"
+
+    # Find the last date with data for this subject
+    data = pd.read_csv(filename, usecols=["date", "subject_id"])
+    data = data[data["subject_id"] == subject_id]
+    latest_date = max(pd.to_datetime(data['date']))
+
     summaries = pd.DataFrame(columns=sleep_columns)
 
     # Now check for new
     summary_list = sleep_list(token)
     for summary in summary_list:
-        if 'heart_rate_samples' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], "heart rate")
-        if 'hypnogram' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], "hypnogram")
+        # Sleep reports don't change once generated. If the date is
+        # already found, just skip
+        date = datetime.strptime(summary["date"], '%Y-%m-%d')
+        if date >= latest_date:
 
-        # Take only the given set of columns
-        pruned_data = prune_data(summary, sleep_columns)
-        pruned_data['subject_id'] = subject_id
-        summaries = summaries.append(pruned_data, ignore_index=True)
+            if 'heart_rate_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], type)
+
+            if 'hypnogram' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], type)
+
+            # Take only the given set of columns
+            pruned_data = utils.prune_data(summary, sleep_columns)
+            pruned_data['subject_id'] = subject_id
+
+            summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
     summaries.to_csv(filename, mode='a', header=False)
@@ -762,10 +684,13 @@ def handle_sleep_sample(subject_id, date, data, type):
     type : Name of the sample type
     '''
 
+    if len(data) == 0:
+        print("handle_sleep_sample called with empty sample")
+        return
+
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"sleep_samples.csv"
     columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
-    sampledata = pd.DataFrame(columns=columns)
 
     samples = pd.DataFrame.from_dict([{
                 'subject_id': subject_id,
@@ -773,10 +698,11 @@ def handle_sleep_sample(subject_id, date, data, type):
                 'sample-time': time,
                 'sample-type': type,
                 'sample': sample
-               } for time, sample in data.items()])
-    sampledata = pd.concat([sampledata, samples], ignore_index=True)
+               } for time, sample in data.items])
 
     # write to file
+    sampledata = pd.DataFrame(columns=columns)
+    sampledata = sampledata.append(samples, ignore_index=True)
     sampledata.to_csv(filename, mode='a', header=False)
 
 
@@ -790,40 +716,32 @@ def pull_nightly_recharge(token, user_id, subject_id):
     # Set filename
     filename = raw_data_folder+"nightly_recharge_summary.csv"
 
-    # Load old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[recharge_columns]
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe.
-        summaries = pd.DataFrame(columns=recharge_columns)
+    # Find the last date with data for this subject
+    data = pd.read_csv(filename, usecols=["date", "subject_id"])
+    data = data[data["subject_id"] == subject_id]
+    latest_date = max(pd.to_datetime(data['date']))
+
+    summaries = pd.DataFrame(columns=recharge_columns)
 
     # Now check for new
     summary_list = recharge_list(token)
     for summary in summary_list:
-        # Extract the hrv and breathing rate samples
-        if 'hrv_samples' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hrv_samples'], type)
-        if 'breathing_samples' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['breathing_samples'], type)
+        date = datetime.strptime(summary["date"], '%Y-%m-%d')
+        if date >= latest_date:
+            # Extract the hrv and breathing rate samples
+            if 'hrv_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hrv_samples'], type)
+            if 'breathing_samples' in summary:
+                utils.retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['breathing_samples'], type)
 
-        # Take only the given set of columns
-        pruned_data = prune_data(summary, recharge_columns)
-        pruned_data['subject_id'] = subject_id
+            # Take only the given set of columns
+            pruned_data = utils.prune_data(summary, recharge_columns)
+            pruned_data['subject_id'] = subject_id
 
-        # Recharge reports don't change once generated. If the date is
-        # already found, just skip
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
-
-        summaries = summaries.append(pruned_data, ignore_index=True)
+            summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
 
 
 def pull_subject_data(token, user_id, subject_id):

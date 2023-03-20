@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# This will find the last date we have received data from a given subject.
+
 # find unique IDs in the data
 cut -d "," -f2 ../raw_data/activity_summary.csv | tail -n+2 | sort | uniq > .get_last_date_unique
 
