@@ -825,7 +825,10 @@ if __name__ == "__main__":
     for line in token_file:
         token, user, subject_id = line.split(' ')
         try:
+            now = datetime.now()
+            print(now.strftime("%H:%M:%S:"), user)
             pull_subject_data(token, int(user), int(subject_id))
+            time.sleep(0.1)
         except requests.exceptions.HTTPError as e:
             print(e)
             print(f"HTTP-error for {int(subject_id)}, could be revoked")
