@@ -813,10 +813,12 @@ def pull_subject_data(token, user_id, subject_id):
     token : The oauth2 authorization token of the user
     user_id : The polar user ID of the user
     '''
-    retry_and_report(pull_activities, token, user_id, subject_id)
-    retry_and_report(pull_exercises, token, user_id, subject_id)
-    retry_and_report(pull_sleep, token, user_id, subject_id)
-    retry_and_report(pull_nightly_recharge, token, user_id, subject_id)
+    has_data = retry_and_report(pull_activities, token, user_id, subject_id)
+    if has_data:
+      retry_and_report(pull_exercises, token, user_id, subject_id)
+      retry_and_report(pull_sleep, token, user_id, subject_id)
+      retry_and_report(pull_nightly_recharge, token, user_id, subject_id)
+      time.sleep(1)
 
 
 # If run as a script, read the token file and pull all data
