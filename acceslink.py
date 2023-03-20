@@ -86,17 +86,15 @@ def retry_and_report(try_function, *args):
     ''' Try running an acceslink function. If it fails, report the error and retry after
         20 seconds. Wait up to (about) 15 minutes, in case the problem is the rate limit.
     '''
-    print(try_function.__name__)
     for retry in range(50):
         try:
-            try_function(*args)
+            result = try_function(*args)
+            return result
         except Exception as e:
             print("Encountered error:", e)
             # if failed, run the next iteration (retry)
             time.sleep(20)
-            continue
-        # if succesfull, break from the loop
-        break
+    return False
 
 
 def register(token):
