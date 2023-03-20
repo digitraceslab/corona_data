@@ -661,7 +661,8 @@ def pull_exercises(token, user_id, subject_id):
     commit_exercise(token, user_id, transaction)
 
     # Write to the file
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
+
 
 
 def pull_sleep(token, user_id, subject_id):
