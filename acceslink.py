@@ -664,6 +664,66 @@ def pull_exercises(token, user_id, subject_id):
     summaries.to_csv(filename, mode='a', header=False)
 
 
+def pull_sleep_summary_date(token, subject_id, year, month, day):
+    ''' Fetch a sleep summary for the given date 
+    token : The oauth2 authorization token of the user
+    subject_id : The polar subject ID of the user
+    date : The date of the sleep summary formatted as "YYYY-MM-DD"
+    '''
+
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {token}',
+        'Connection': 'keep-alive'
+    }
+
+    url = f'{api_url}/sleep/{year:04}-{month:02}-{day:02}'
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+
+    if r.status_code == 204:
+        return []
+
+    summary = r.json()
+
+    if 'heart_rate_samples' in summary:
+        retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], "heart rate")
+    if 'hypnogram' in summary:
+        retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], "hypnogram")
+
+    # Take only the given set of columns
+    pruned_data = prune_data(summary, sleep_columns)
+    pruned_data['subject_id'] = subject_id
+    return pruned_data
+
+
+import datetime
+def date_exists(year, month, day):
+    try:
+        datetime.datetime(year, month, day)
+        return True
+    except:
+        return False
+
+
+def pull_sleep_dates(token, subject_id, years, months, days):
+    # Set filename
+    filename = raw_data_folder+"sleep_summary.csv"
+    summaries = pd.DataFrame(columns=sleep_columns)
+
+    for y in years:
+        for m in months:
+            for d in days:
+                if date_exists(y, m, d):
+                    try:
+                        pruned_data = pull_sleep_summary_date(token, subject_id, y, m, d)
+                        pruned_data = pd.DataFrame.from_dict([pruned_data])
+                        summaries = pd.concat([summaries, pruned_data], ignore_index=True)
+                    except Exception as e:
+                        print(e)
+        
+    summaries.to_csv(filename, mode='a', header=False)
+
 
 def pull_sleep(token, user_id, subject_id):
     ''' Pull sleep data for a given user and write to csv files.
@@ -680,21 +740,13 @@ def pull_sleep(token, user_id, subject_id):
     summary_list = sleep_list(token)
     for summary in summary_list:
         if 'heart_rate_samples' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['heart_rate_samples'], "heart rate")
         if 'hypnogram' in summary:
-            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], type)
+            retry_and_report(handle_sleep_sample, subject_id, summary['date'], summary['hypnogram'], "hypnogram")
 
         # Take only the given set of columns
         pruned_data = prune_data(summary, sleep_columns)
         pruned_data['subject_id'] = subject_id
-
-        # Sleep reports don't change once generated. If the date is
-        # already found, just skip
-        index = pruned_data['date']
-        condition = summaries['date'] == index
-        condition = condition & summaries['subject_id'] == subject_id
-        rows = summaries[condition].index
-        summaries.drop(rows, inplace=True)
         summaries = summaries.append(pruned_data, ignore_index=True)
 
     # Write to the file
