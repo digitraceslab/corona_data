@@ -434,10 +434,7 @@ def pull_steps(token, user_id, subject_id, url, date):
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_steps.csv"
     columns = ["subject_id", "date", "time", "steps"]
-    if os.path.isfile(filename):
-        stepdata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        stepdata = pd.DataFrame(columns=columns)
+    stepdata = pd.DataFrame(columns=columns)
 
     # This activity should have all data for the date. So
     # remove all data for this date and add the newly read data
@@ -449,7 +446,7 @@ def pull_steps(token, user_id, subject_id, url, date):
 
     # Append the new data and save
     stepdata = stepdata.append(samples, ignore_index=True)
-    stepdata.to_csv(filename)
+    stepdata.to_csv(filename, mode='a', header=False)
 
 
 def pull_zones(token, user_id, subject_id, url, date):
@@ -487,10 +484,7 @@ def pull_zones(token, user_id, subject_id, url, date):
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"activity_zones.csv"
     columns = ["subject_id", "date", "time", "index", "duration"]
-    if os.path.isfile(filename):
-        zonedata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        zonedata = pd.DataFrame(columns=columns)
+    zonedata = pd.DataFrame(columns=columns)
 
     # This activity should have all data for the date. So
     # remove all data for this date and add the newly read data
@@ -503,7 +497,7 @@ def pull_zones(token, user_id, subject_id, url, date):
 
     # Append the new data and write
     zonedata = zonedata.append(samples, ignore_index=True)
-    zonedata.to_csv(filename)
+    zonedata.to_csv(filename, mode='a', header=False)
 
 
 def commit_activity(token, user_id, transaction):
@@ -561,17 +555,7 @@ def pull_activities(token, user_id, subject_id):
 
     if transaction is None:
         # No new data, nothing to do
-        return
-
-    # Found new data. Check for old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[activity_columns]
-
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe and note there is not previous data.
-        summaries = pd.DataFrame(columns=activity_columns)
+        return False
 
     # Get the list of summaries
     url_list = activity_list(token, user_id, transaction)
@@ -603,6 +587,7 @@ def pull_activities(token, user_id, subject_id):
                 summary_list[date] = summary_info
 
     # Now check for new
+    summaries = pd.DataFrame(columns=activity_columns)
     for summary_info in summary_list.values():
         # Prune the summary data
         summary = summary_info['summary']
@@ -626,7 +611,9 @@ def pull_activities(token, user_id, subject_id):
 
     # Commit the transaction and write the data
     commit_activity(token, user_id, transaction)
-    summaries.to_csv(filename)
+    summaries.to_csv(filename, mode='a', header=False)
+
+    return True
 
 
 def pull_exercises(token, user_id, subject_id):
@@ -646,21 +633,13 @@ def pull_exercises(token, user_id, subject_id):
         # No new data, nothing to do
         return
 
-    # Found new data. Check for old data first
-    if os.path.isfile(filename):
-        # The file already exists, so read current entries
-        summaries = pd.read_csv(filename, low_memory=False)[exercise_columns]
-    else:
-        # First time pulling for this subject. Create a
-        # dataframe.
-        summaries = pd.DataFrame(columns=exercise_columns)
 
     # Now check for new
-    url_list = exercise_list(token, user_id, transaction)
-    for url in url_list:
+    summaries = pd.DataFrame(columns=exercise_columns)
+    for url in exercise_list(token, user_id, transaction):
         # Get the summary and specifically note the start-time.
         # There is only one final entry for each start-time.
-        print("pulling exercie")
+        print("pulling exercise")
         summary = exercise_summary(token, user_id, url)
 
         # collapse the heart rate hierarchy
@@ -735,29 +714,19 @@ def handle_sleep_sample(subject_id, date, data, type):
     # Read from the file or initialize an empty dataframe
     filename = raw_data_folder+"sleep_samples.csv"
     columns = ['subject_id', 'date', 'sample-time', 'sample-type', 'sample']
-    if os.path.isfile(filename):
-        sampledata = pd.read_csv(filename, low_memory=False)[columns]
-    else:
-        sampledata = pd.DataFrame(columns=columns)
+    sampledata = pd.DataFrame(columns=columns)
 
-    # Drop any data matching this sample
-    condition = sampledata['date'] == date
-    condition = condition & sampledata['subject_id'] == subject_id
-    condition = condition & sampledata['sample-type'] == type
-    rows = sampledata[condition].index
-    sampledata.drop(rows, inplace=True)
-
-    samples = [{
+    samples = pd.DataFrame.from_dict([{
                 'subject_id': subject_id,
                 'date': date,
                 'sample-time': time,
                 'sample-type': type,
                 'sample': sample
-               } for time, sample in data.items]
-    sampledata = sampledata.append(samples, ignore_index=True)
+               } for time, sample in data.items()])
+    sampledata = pd.concat([sampledata, samples], ignore_index=True)
 
     # write to file
-    sampledata.to_csv(filename)
+    sampledata.to_csv(filename, mode='a', header=False)
 
 
 def pull_nightly_recharge(token, user_id, subject_id):
